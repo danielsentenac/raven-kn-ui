@@ -69,7 +69,21 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Whether saving [newUrl] would replace the local copy: it holds data from another server.
+  bool wouldReplaceData(String newUrl) =>
+      _norm(newUrl) != _norm(serverUrl) && (archive.count(const LogQuery()) > 0 || archive.doc('sky') != null);
+
+  static String _norm(String url) => url.trim().replaceAll(RegExp(r'/+$'), '').toLowerCase();
+
+  /// Saves the settings. A local copy belongs to one server: with another
+  /// server address, the copy of the previous one is removed, so that the
+  /// data of two stores are never mixed.
   void saveSettings({required String serverUrl, required String token, required String portalUrl}) {
+    if (wouldReplaceData(serverUrl)) {
+      archive.clearData();
+      batch = 0;
+      lastSync = null;
+    }
     archive.setMeta('server_url', serverUrl.trim());
     archive.setMeta('token', token.trim());
     archive.setMeta('portal_url', portalUrl.trim());

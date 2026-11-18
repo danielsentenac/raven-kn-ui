@@ -214,5 +214,11 @@ class Archive {
     return r.isEmpty ? null : r.first['data'] as Uint8List;
   }
 
+  /// Removes everything copied from a server (entries, pages, maps, sync positions); settings stay.
+  void clearData() {
+    db.execute('DELETE FROM events; DELETE FROM docs; DELETE FROM blobs;');
+    db.execute("DELETE FROM meta WHERE key LIKE 'cursor\\_%' ESCAPE '\\' OR key IN ('batch', 'last_sync', 'last_scope')");
+  }
+
   void close() => db.dispose();
 }

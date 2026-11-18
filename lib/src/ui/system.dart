@@ -217,10 +217,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Align(
             alignment: Alignment.centerLeft,
             child: FilledButton(
-                onPressed: () {
+                onPressed: () async {
+                  final nav = Navigator.of(context);
+                  if (state.wouldReplaceData(_url!.text)) {
+                    final ok = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                              title: const Text('Another server'),
+                              content: Text('The local copy holds the logbook of\n${state.serverUrl}\n\n'
+                                  'It will be removed and replaced by the logbook of the new server. Export it first if you want to keep it.'),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Replace')),
+                              ],
+                            ));
+                    if (ok != true) return;
+                  }
                   state.saveSettings(serverUrl: _url!.text, token: _token!.text, portalUrl: _portal!.text);
                   state.savePortalLogin(user: _user!.text, password: _pass!.text, auto: _auto!, certName: _cert!.text);
-                  Navigator.pop(context);
+                  nav.pop();
                   state.sync();
                 },
                 child: const Text('Save and sync'))),

@@ -144,7 +144,7 @@ class ConnectionBanner extends StatelessWidget {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           color: scheme.surfaceContainerHighest,
-          child: Text(state.syncing ? 'Syncing...' : 'Synced: $when. ${state.connMessage}.',
+          child: Text(state.syncing ? 'Syncing...' : 'Synced with ${Uri.tryParse(state.serverUrl)?.host ?? state.serverUrl}: $when. ${state.connMessage}.',
               style: Theme.of(context).textTheme.bodySmall));
     }
     final (IconData icon, String action, VoidCallback run) = switch (state.conn) {
@@ -175,7 +175,7 @@ class ConnectionBanner extends StatelessWidget {
         Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(connTitle(state.conn), style: TextStyle(fontWeight: FontWeight.w600, color: scheme.onSecondaryContainer)),
-          Text('Showing the local copy: $when.${state.connMessage.isNotEmpty ? ' ${state.connMessage}.' : ''}',
+          Text('Showing the local copy of ${Uri.tryParse(state.serverUrl)?.host ?? 'no server'}: $when.${state.connMessage.isNotEmpty ? ' ${state.connMessage}.' : ''}',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSecondaryContainer)),
         ])),
         TextButton(onPressed: state.syncing ? null : run, child: Text(action)),

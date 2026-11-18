@@ -136,6 +136,25 @@ void main() {
       expect(s.portalUrl, 'https://other.example/login');
     });
 
+    test('another server address replaces the local copy; the same one keeps it', () async {
+      final s = make();
+      await s.sync();
+      expect(s.archive.count(const LogQuery()), greaterThan(50));
+      expect(s.wouldReplaceData('http://server:8765/'), isFalse); // the same server
+      s.saveSettings(serverUrl: 'http://server:8765/', token: 'lvktok', portalUrl: '');
+      expect(s.archive.count(const LogQuery()), greaterThan(50));
+      expect(s.wouldReplaceData('http://other.example:8765'), isTrue);
+      s.saveSettings(serverUrl: 'http://other.example:8765', token: 'lvktok', portalUrl: '');
+      expect(s.archive.count(const LogQuery()), 0);
+      expect(s.archive.doc('sky'), isNull);
+      expect(s.archive.blob('map/GW170817/1/gw'), isNull);
+      expect(s.lastSync, isNull);
+      expect(s.token, 'lvktok'); // settings are kept
+      await s.sync(); // and the new server is read from its beginning
+      expect(s.archive.count(const LogQuery()), greaterThan(50));
+      expect(s.batch, 1);
+    });
+
     test('a refused token is reported as such', () async {
       final s = make(client: () => fixtureServer(token: 'another'));
       await s.sync();
