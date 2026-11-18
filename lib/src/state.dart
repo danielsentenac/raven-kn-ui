@@ -33,22 +33,11 @@ class AppState extends ChangeNotifier {
 
   String get serverUrl => archive.meta('server_url') ?? '';
   String get token => archive.meta('token') ?? '';
-  /// Login page of the Virgo firewall, opened in the browser when the session is closed.
-  static const defaultPortalUrl = 'https://portal.example.org/connect/PortalMain';
-
-  String get portalUrl {
-    final v = archive.meta('portal_url') ?? '';
-    return v.isEmpty ? defaultPortalUrl : v;
-  }
+  /// Login page of the firewall portal, set in Settings; empty when not set.
+  String get portalUrl => archive.meta('portal_url') ?? '';
 
   /// Name on the portal's certificate, when it is not the name in its address.
-  static const defaultPortalCertName = 'cert.example.org';
-
-  String get portalCertName {
-    final v = archive.meta('portal_cert_name');
-    if (v != null) return v;
-    return portalUrl == defaultPortalUrl ? defaultPortalCertName : '';
-  }
+  String get portalCertName => archive.meta('portal_cert_name') ?? '';
 
   String get portalUser => archive.meta('portal_user') ?? '';
   String get portalPassword => archive.meta('portal_password') ?? '';
@@ -58,7 +47,7 @@ class AppState extends ChangeNotifier {
   /// (repeated refusals could lock the account).
   bool get portalRefused => archive.meta('portal_refused') == '1';
 
-  bool get canAutoLogin => portalAuto && portalUser.isNotEmpty && portalPassword.isNotEmpty && !portalRefused;
+  bool get canAutoLogin => portalAuto && portalUrl.isNotEmpty && portalUser.isNotEmpty && portalPassword.isNotEmpty && !portalRefused;
 
   void savePortalLogin({required String user, required String password, required bool auto, String? certName}) {
     archive.setMeta('portal_user', user.trim());

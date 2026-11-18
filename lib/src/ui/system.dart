@@ -187,7 +187,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const SizedBox(height: 12),
         TextField(controller: _token, decoration: const InputDecoration(labelText: 'Access token', border: OutlineInputBorder()), obscureText: true, autocorrect: false, enableSuggestions: false),
         const SizedBox(height: 12),
-        TextField(controller: _portal, decoration: const InputDecoration(labelText: 'Address of the Virgo portal (for the automatic login)', border: OutlineInputBorder()), keyboardType: TextInputType.url, autocorrect: false),
+        TextField(controller: _portal, decoration: const InputDecoration(labelText: 'Address of the Virgo portal (for the automatic login)', hintText: 'https://portal.example.org/login', border: OutlineInputBorder()), keyboardType: TextInputType.url, autocorrect: false),
         const SizedBox(height: 20),
         Text('Virgo portal login', style: Theme.of(context).textTheme.titleSmall),
         const SizedBox(height: 8),

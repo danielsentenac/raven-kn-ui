@@ -127,11 +127,12 @@ void main() {
       expect(s.archive.doc('optical/SSS17a'), isNotNull);
     });
 
-    test('the Virgo portal is the default portal address', () {
+    test('the portal address is empty until it is set', () {
       final s = AppState(Archive.memory());
-      expect(s.portalUrl, 'https://portal.example.org/connect/PortalMain');
-      s.saveSettings(serverUrl: 'http://server:8765', token: 't', portalUrl: '');
-      expect(s.portalUrl, AppState.defaultPortalUrl);
+      expect(s.portalUrl, '');
+      expect(s.portalCertName, '');
+      s.savePortalLogin(user: 'me', password: 'pw', auto: true);
+      expect(s.canAutoLogin, isFalse); // no portal address: no automatic login
       s.saveSettings(serverUrl: 'http://server:8765', token: 't', portalUrl: 'https://other.example/login');
       expect(s.portalUrl, 'https://other.example/login');
     });

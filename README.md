@@ -27,7 +27,7 @@ In every case the local copy stays readable, with the time of the last sync.
 
 ### Automatic portal login
 
-The portal address defaults to the site's Check Point captive portal. With a portal login and password saved in Settings, the application logs in by itself when
+The portal address (a Check Point captive portal) is set in Settings; there is no built-in default. With it and a portal login and password saved, the application logs in by itself when
 the server is not reached, at opening and at each sync, then syncs. `lib/src/portal.dart` follows the
 portal page's own sequence (session, public key and one-time token, encrypted password, final state),
 read from the page served on 2026-11-18; a firewall update may change it, and the application then
@@ -40,7 +40,7 @@ says so instead of guessing.
   again, so that a wrong password cannot lock the account.
 - The access token, the portal login and its password are stored in the application's private
   database, not encrypted (owner-only file on Linux; excluded from Android backups).
-- `dart run tool/portal_probe.dart` checks the first two steps against the real portal without
+- `dart run tool/portal_probe.dart <portal URL> [certificate name]` checks the first two steps against the real portal without
   credentials.
 
 ## Build and run

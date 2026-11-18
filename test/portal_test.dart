@@ -114,13 +114,13 @@ void main() {
             open = true;
             return const PortalResult(true, 'logged in');
           });
-      s.saveSettings(serverUrl: 'http://server:8765', token: 'lvktok', portalUrl: '');
-      s.savePortalLogin(user: 'me', password: 'pw', auto: true);
+      s.saveSettings(serverUrl: 'http://server:8765', token: 'lvktok', portalUrl: 'https://portal.example/login');
+      s.savePortalLogin(user: 'me', password: 'pw', auto: true, certName: 'cert.example');
       await s.sync();
       expect(s.conn, Conn.ok, reason: s.connMessage);
       expect(s.connMessage, contains('after logging in to the portal'));
       expect(calls, [
-        ['https://portal.example.org/connect/PortalMain', 'cert.example.org', 'me', 'pw']
+        ['https://portal.example/login', 'cert.example', 'me', 'pw']
       ]);
       expect(s.archive.count(const LogQuery()), greaterThan(50));
       await s.sync(); // session open: no new login
@@ -135,7 +135,7 @@ void main() {
             n++;
             return const PortalResult(false, 'the portal refused the login or the password', refused: true);
           });
-      s.saveSettings(serverUrl: 'http://server:8765', token: 't', portalUrl: '');
+      s.saveSettings(serverUrl: 'http://server:8765', token: 't', portalUrl: 'https://portal.example/login');
       s.savePortalLogin(user: 'me', password: 'wrong', auto: true);
       await s.sync();
       await s.sync();
@@ -157,7 +157,7 @@ void main() {
             n++;
             return const PortalResult(true, '');
           })
-        ..saveSettings(serverUrl: 'http://server:8765', token: 't', portalUrl: '');
+        ..saveSettings(serverUrl: 'http://server:8765', token: 't', portalUrl: 'https://portal.example/login');
       await make().sync();
       await (make()..savePortalLogin(user: 'me', password: 'pw', auto: false)).sync();
       expect(n, 0);
