@@ -113,6 +113,18 @@ void main() {
       await t.pumpAndSettle();
       await t.tap(find.textContaining('Optical SSS17a').last);
     });
+    await shot(t, 'sky_single_alerts', const Shell(), desk, act: () async {
+      await t.tap(find.text('Sky').last);
+      await t.pumpAndSettle();
+      await t.tap(find.text('Alerts without candidate (2)'));
+      await t.pumpAndSettle();
+      expect(find.textContaining('1 alert shown: GW S261021fy'), findsOneWidget); // the newest GW alert alone
+      await t.tap(find.text('GRB (1)'));
+      await t.pumpAndSettle();
+      await t.tap(find.textContaining('Swift-BAT 1519536').first); // ticked as well: both drawn together
+      await t.pumpAndSettle();
+      expect(find.textContaining('2 alerts shown'), findsOneWidget);
+    });
     await shot(t, 'followup_gw_only', FollowUpScreen(state.followups.firstWhere((f) => f['id'] == 'gw:S261021fy')), phone);
     await shot(t, 'system_phone', const Shell(), const Size(412, 1500), act: () => t.tap(find.text('System').last));
     await shot(t, 'settings', const SettingsScreen(), phone);

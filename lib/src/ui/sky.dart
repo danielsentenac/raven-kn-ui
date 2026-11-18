@@ -98,6 +98,12 @@ class _SkyViewState extends State<SkyView> {
   /// The follow-up shown (first selector), and the alert chosen in it (second selector).
   String? group;
   String? alert;
+
+  /// Single alerts instead of candidates: the alerts that belong to no candidate, chosen by
+  /// detection type; several can be shown together to compare their positions.
+  bool singles = false;
+  String type = 'gw';
+  final Set<String> chosen = {};
   String? sid;
   int? version;
   String kind = 'gw';
@@ -159,13 +165,26 @@ class _SkyViewState extends State<SkyView> {
         }
       }
     }
-    // default: the first candidate that has a GW alert, else the first follow-up
-    final current = groups.where((g) => g.id == group).firstOrNull ??
-        groups.where((g) => g.candidate && g.ids.any((i) => i.startsWith('gw:'))).firstOrNull ??
-        groups.first;
-    group = current.id;
-    final related = current.ids.toSet();
     final fixed = widget.focus != null || widget.startId != null;
+    // candidates on one side; on the other, the alerts that belong to no candidate
+    final candidates = groups.where((g) => g.candidate).toList();
+    final single = [for (final g in groups.where((g) => !g.candidate)) ...g.ids];
+    List<String> ofType(String t) => single.where((i) => follow.events[i]!.kind == t).toList()
+      ..sort((x, y) => (follow.events[y]!.time ?? DateTime.utc(1970)).compareTo(follow.events[x]!.time ?? DateTime.utc(1970)));
+    const types = ['gw', 'grb', 'nu', 'optical'];
+    final bool alone = !fixed && (singles || candidates.isEmpty) && single.isNotEmpty;
+    if (alone) {
+      if (ofType(type).isEmpty) type = types.firstWhere((t) => ofType(t).isNotEmpty);
+      chosen.removeWhere((i) => !single.contains(i));
+      if (chosen.isEmpty) chosen.add(ofType(type).first); // the newest of the type
+    }
+    // default candidate: the first that has a GW alert, else the first follow-up
+    final pool = fixed || candidates.isEmpty ? groups : candidates;
+    final current = pool.where((g) => g.id == group).firstOrNull ??
+        pool.where((g) => g.ids.any((i) => i.startsWith('gw:'))).firstOrNull ??
+        pool.first;
+    group = current.id;
+    final related = alone ? chosen.toSet() : current.ids.toSet();
     // only this follow-up: its superevents, and its objects
     final gw = ((sky['gw'] as List?) ?? const [])
         .cast<Map<String, dynamic>>()
@@ -233,7 +252,61 @@ class _SkyViewState extends State<SkyView> {
         .toList();
 
     return ListView(padding: const EdgeInsets.all(12), children: [
-      if (!fixed)
+      if (!fixed && candidates.isNotEmpty && single.isNotEmpty)
+        Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: SegmentedButton<bool>(
+                segments: [
+                  ButtonSegment(value: false, label: Text('Candidates (${candidates.length})')),
+                  ButtonSegment(value: true, label: Text('Alerts without candidate (${single.length})')),
+                ],
+                selected: {alone},
+                onSelectionChanged: (v) => setState(() {
+                      singles = v.first;
+                      alert = null;
+                      target = null;
+                      picked = null;
+                    }))),
+      if (alone) ...[
+        Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          const Text('Type'),
+          for (final t in types)
+            if (ofType(t).isNotEmpty)
+              ChoiceChip(
+                  label: Text('${follow.events[ofType(t).first]!.kindLabel} (${ofType(t).length})'),
+                  selected: type == t,
+                  onSelected: (_) => setState(() => type = t)),
+          TextButton(onPressed: () => setState(() => chosen.addAll(ofType(type))), child: const Text('Show all of this type')),
+          TextButton(onPressed: () => setState(() => chosen.removeWhere((i) => follow.events[i]!.kind == type)), child: const Text('Hide this type')),
+        ]),
+        // the alerts of the chosen type; those ticked are drawn, whatever their type
+        ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 132),
+            child: SingleChildScrollView(
+                child: Wrap(spacing: 6, runSpacing: 2, children: [
+              for (final id in ofType(type))
+                FilterChip(
+                    label: Text('${follow.events[id]!.name}'
+                        '${follow.events[id]!.time != null ? '  ·  ${fmtTime(follow.events[id]!.time, seconds: false)}' : ''}'),
+                    selected: chosen.contains(id),
+                    onSelected: (v) => setState(() {
+                          v ? chosen.add(id) : chosen.remove(id);
+                          if (v && id.startsWith('gw:')) {
+                            sid = id.substring(3); // the map just ticked is the one shaded
+                            version = null;
+                          } else if (v) {
+                            target = id; // and the zoomed view centres on it
+                          }
+                        })),
+            ]))),
+        Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Text(
+                '${chosen.length} alert${chosen.length == 1 ? '' : 's'} shown: '
+                '${(chosen.toList()..sort()).map((i) => follow.events[i]!.label).take(6).join(', ')}${chosen.length > 6 ? '...' : ''}',
+                style: Theme.of(context).textTheme.bodySmall)),
+      ],
+      if (!fixed && !alone)
         Row(children: [
           const SizedBox(width: 78, child: Text('Candidate')),
           Expanded(
@@ -241,10 +314,8 @@ class _SkyViewState extends State<SkyView> {
                   isExpanded: true,
                   value: current.id,
                   items: [
-                    for (final g in groups)
-                      DropdownMenuItem(
-                          value: g.id,
-                          child: Text('${g.label}${g.candidate ? '' : '   (not a candidate)'}', overflow: TextOverflow.ellipsis))
+                    for (final g in pool)
+                      DropdownMenuItem(value: g.id, child: Text(g.label, overflow: TextOverflow.ellipsis))
                   ],
                   onChanged: (v) => setState(() {
                         group = v;
@@ -254,7 +325,8 @@ class _SkyViewState extends State<SkyView> {
                       }))),
         ]),
       // the alerts of this follow-up only
-      Row(children: [
+      if (!alone)
+        Row(children: [
         const SizedBox(width: 78, child: Text('Alert')),
         Expanded(
             child: DropdownButton<String?>(
@@ -285,6 +357,17 @@ class _SkyViewState extends State<SkyView> {
                     }))),
       ]),
       Wrap(spacing: 10, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        if (alone && gw.length > 1)
+          DropdownButton<String>(
+              value: sid,
+              items: [
+                for (final g in gw)
+                  DropdownMenuItem(value: g['superevent_id'] as String, child: Text('map of ${g['superevent_id']}'))
+              ],
+              onChanged: (v) => setState(() {
+                    sid = v;
+                    version = null;
+                  })),
         if (versions.isNotEmpty)
           DropdownButton<int>(
               value: ver?['version'] as int?,
@@ -388,7 +471,7 @@ class _SkyViewState extends State<SkyView> {
                 '${se?['retracted'] == true ? ' This superevent was retracted.' : ''}',
                 style: Theme.of(context).textTheme.bodySmall)),
       if (gw.isEmpty)
-        Text('This follow-up has no GW alert: no map to show.', style: Theme.of(context).textTheme.bodySmall),
+        Text(alone ? 'No GW alert is ticked: no map to show.' : 'This follow-up has no GW alert: no map to show.', style: Theme.of(context).textTheme.bodySmall),
     ]);
   }
 }
