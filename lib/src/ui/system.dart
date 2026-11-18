@@ -200,7 +200,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: const Text('When the server is not reached, at opening and at each sync'),
             value: _auto!,
             onChanged: (v) => setState(() => _auto = v)),
-        TextField(controller: _cert, decoration: const InputDecoration(labelText: 'Name on the portal certificate, if not the address', hintText: 'cert.example.org', border: OutlineInputBorder()), autocorrect: false),
+        TextField(controller: _cert, decoration: const InputDecoration(labelText: 'Name on the portal certificate, if not the address', hintText: 'portal.example.org', border: OutlineInputBorder()), autocorrect: false),
         if (state.portalRefused)
           Padding(
               padding: const EdgeInsets.only(top: 8),

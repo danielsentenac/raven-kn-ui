@@ -120,8 +120,8 @@ Future<PortalResult> portalLoginWith(PortalSend send, String user, String passwo
 /// HTTPS session with the portal, with its cookies.
 ///
 /// [certName]: the name on the portal's certificate when it differs from the
-/// address (the firewall node `portal.example.org` presents the certificate of
-/// `cert.example.org`). The connection then goes to the address, and the
+/// address (the firewall node presents a certificate issued for another
+/// name). The connection then goes to the address, and the
 /// certificate is checked, fully, against that name. Verification is never
 /// switched off.
 class PortalSession {
