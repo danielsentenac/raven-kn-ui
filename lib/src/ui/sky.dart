@@ -624,7 +624,7 @@ class _SkyViewState extends State<SkyView> {
 Color _kindColor(String kind, Palette pal) =>
     switch (kind) { 'grb' || 'xray' => pal.series(1), 'nu' => pal.series(2), 'radio' => pal.series(3), _ => pal.ink };
 
-void _mark(Canvas c, Offset o, String kind, Palette pal) {
+void _mark(Canvas c, Offset o, String kind, Palette pal, {double scale = 1}) {
   final col = _kindColor(kind, pal);
   final stroke = Paint()
     ..color = col
@@ -650,20 +650,20 @@ void _mark(Canvas c, Offset o, String kind, Palette pal) {
       both((p) => c.drawPath(path, p));
     case 'xray':
       both((p) {
-        c.drawLine(o - const Offset(5, 5), o + const Offset(5, 5), p);
-        c.drawLine(o - const Offset(5, -5), o + const Offset(5, -5), p);
+        c.drawLine(o - Offset(5, 5) * scale, o + Offset(5, 5) * scale, p);
+        c.drawLine(o - Offset(5, -5) * scale, o + Offset(5, -5) * scale, p);
       });
     case 'nu':
-      both((p) => c.drawRect(Rect.fromCenter(center: o, width: 10, height: 10), p));
+      both((p) => c.drawRect(Rect.fromCenter(center: o, width: 10 * scale, height: 10 * scale), p));
     case 'radio':
       final tri = Path()
-        ..moveTo(o.dx, o.dy - 6)
-        ..lineTo(o.dx + 6, o.dy + 5)
-        ..lineTo(o.dx - 6, o.dy + 5)
+        ..moveTo(o.dx, o.dy - 6 * scale)
+        ..lineTo(o.dx + 6 * scale, o.dy + 5 * scale)
+        ..lineTo(o.dx - 6 * scale, o.dy + 5 * scale)
         ..close();
       both((p) => c.drawPath(tri, p));
     default:
-      both((p) => c.drawCircle(o, 5, p));
+      both((p) => c.drawCircle(o, 5 * scale, p));
   }
 }
 
@@ -792,10 +792,19 @@ class _SkyPainter extends CustomPainter {
           Paint()..color = pal.sequential(0.2)..style = PaintingStyle.stroke..strokeWidth = 1.5);
       t.paint(canvas, r.topLeft);
     }
+    // the marks first, the optical transients last. One that lies on its GRB or X-ray position (a
+    // counterpart reported at that position) would hide the other mark or be hidden by it: the
+    // other mark is then drawn larger, around the lozenge
+    final optical = [for (final o in objects.where((o) => o.kind == 'optical')) at(o.ra, o.dec)].whereType<Offset>().toList();
+    for (final o in [...objects.where((o) => o.kind != 'optical'), ...objects.where((o) => o.kind == 'optical')]) {
+      final q = at(o.ra, o.dec);
+      if (q == null || !(Offset.zero & size).inflate(2).contains(q)) continue;
+      final under = o.kind != 'optical' && optical.any((p) => (p - q).distance < 8);
+      _mark(canvas, q, o.kind, pal, scale: under ? 2.2 : 1);
+    }
     for (final o in objects) {
       final q = at(o.ra, o.dec);
       if (q == null || !(Offset.zero & size).inflate(2).contains(q)) continue;
-      _mark(canvas, q, o.kind, pal);
       final sel = identical(o, picked) || (picked != null && o.label == picked!.label && o.kind == picked!.kind);
       if (o.kind == 'optical' || sel || objects.length <= 8) {
         final co = o.kind == 'optical' && coincident.contains(o.label);
