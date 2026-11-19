@@ -7,16 +7,38 @@
 /// a follow-up of their own.
 library;
 
+/// The detection types of an alert, in the order of the selectors.
+const alertKinds = ['gw', 'grb', 'xray', 'optical', 'nu', 'radio'];
+
+String alertKindLabel(String kind) => switch (kind) {
+      'optical' => 'Optical',
+      'grb' => 'GRB',
+      'xray' => 'X-ray',
+      'nu' => 'Neutrino',
+      'radio' => 'Radio',
+      _ => 'GW',
+    };
+
+/// Detection type of an entry of the server's `grb` list, which holds every
+/// high-energy notice: `xray` for an X-ray instrument (Einstein Probe WXT and
+/// FXT, Swift-XRT, SVOM-MXT) or an X-ray position whose burst is not in the
+/// store, else `grb`.
+String highEnergyKind(Map<String, dynamic> g) =>
+    g['burst_missing'] == true || RegExp(r'(WXT|FXT|XRT|MXT)', caseSensitive: false).hasMatch('${g['instrument'] ?? ''}')
+        ? 'xray'
+        : 'grb';
+
 /// One alert of the store, named by its detection type. Ids: `optical:<name>` (an optical
-/// transient, the pipeline's `OpticalTransient`), `grb:<id>`, `nu:<id>`, `gw:<superevent>`.
+/// transient, the pipeline's `OpticalTransient`), `grb:<id>` (a GRB or an X-ray notice: the
+/// id is the server's, the type is in [kind]), `nu:<id>`, `gw:<superevent>`, `radio:<id>`.
 class SkyEvent {
   SkyEvent(this.id, this.kind, this.name, this.time);
   final String id;
-  final String kind; // optical | grb | nu | gw
+  final String kind; // one of [alertKinds]
   final String name;
   final DateTime? time;
 
-  String get kindLabel => switch (kind) { 'optical' => 'Optical', 'grb' => 'GRB', 'nu' => 'Neutrino', _ => 'GW' };
+  String get kindLabel => alertKindLabel(kind);
   String get label => '$kindLabel $name';
 }
 
@@ -42,7 +64,11 @@ class FollowUps {
 
     DateTime? t(Object? s) => s is String ? DateTime.tryParse(s) : null;
     for (final g in ((sky['grb'] as List?) ?? const []).cast<Map<String, dynamic>>()) {
-      add(SkyEvent('grb:${g['id']}', 'grb', '${g['instrument'] ?? ''} ${g['trigger'] ?? ''}'.trim(), t(g['time'])));
+      add(SkyEvent('grb:${g['id']}', highEnergyKind(g), '${g['instrument'] ?? ''} ${g['trigger'] ?? ''}'.trim(), t(g['time'])));
+    }
+    // radio notices, when the server lists some (same fields as the GRB notices)
+    for (final r in ((sky['radio'] as List?) ?? const []).cast<Map<String, dynamic>>()) {
+      add(SkyEvent('radio:${r['id']}', 'radio', '${r['instrument'] ?? ''} ${r['trigger'] ?? r['id']}'.trim(), t(r['time'])));
     }
     for (final n in ((sky['nu'] as List?) ?? const []).cast<Map<String, dynamic>>()) {
       add(SkyEvent('nu:${n['id']}', 'nu', (n['event'] ?? n['id']).toString(), t(n['time'])));
@@ -118,9 +144,9 @@ class FollowUps {
 
   bool isLinked(String id) => (_links[id] ?? const {}).isNotEmpty;
 
-  /// All alerts, optical transients first, then GW, GRB and neutrino, newest first in each kind.
+  /// All alerts, optical transients first, then GW, GRB, X-ray, neutrino and radio, newest first in each kind.
   List<SkyEvent> get all {
-    const order = {'optical': 0, 'gw': 1, 'grb': 2, 'nu': 3};
+    const order = {'optical': 0, 'gw': 1, 'grb': 2, 'xray': 3, 'nu': 4, 'radio': 5};
     return events.values.toList()
       ..sort((a, b) {
         final k = order[a.kind]!.compareTo(order[b.kind]!);

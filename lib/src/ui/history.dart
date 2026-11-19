@@ -6,13 +6,15 @@ import 'package:flutter/material.dart';
 
 import 'common.dart';
 
-String typeLabel(String type) => switch (type) { 'optical' => 'Optical', 'gw' => 'GW', 'grb' => 'GRB', 'nu' => 'Neutrino', _ => type };
+String typeLabel(String type) => switch (type) { 'optical' => 'Optical', 'gw' => 'GW', 'grb' => 'GRB', 'xray' => 'X-ray', 'nu' => 'Neutrino', 'radio' => 'Radio', _ => type };
 
 IconData typeIcon(String type) => switch (type) {
       'optical' => Icons.visibility,
       'gw' => Icons.waves,
       'grb' => Icons.flash_on,
       'nu' => Icons.grain,
+      'xray' => Icons.close,
+      'radio' => Icons.settings_input_antenna,
       _ => Icons.circle,
     };
 

@@ -72,7 +72,7 @@ Future<ui.Image> _toImage(Uint8List rgba, int w, int h) {
 
 class SkyObject {
   SkyObject(this.kind, this.label, this.ra, this.dec, this.errDeg, this.info, this.event);
-  final String kind; // optical | grb | xray | nu
+  final String kind; // optical | grb | xray | nu | radio
 
   /// The alert it belongs to (see [FollowUps]).
   final String event;
@@ -99,18 +99,23 @@ class _SkyViewState extends State<SkyView> {
   String? group;
   String? alert;
 
-  /// Single alerts instead of candidates: the alerts that belong to no candidate, chosen by
-  /// detection type; several can be shown together to compare their positions.
+  /// Single alerts instead of candidates: the alerts that belong to no candidate, listed
+  /// newest first for a detection type ([type], or `all`) and a range of dates ([dates],
+  /// UTC days). Each alert chosen in that list is added to the map ([shown]), over those
+  /// already there, whatever their type; they leave it one by one or all at once.
   bool singles = false;
-  String type = 'gw';
-  final Set<String> chosen = {};
+  String type = 'all';
+  DateTimeRange? dates;
+  final Set<String> shown = {};
+  String? last; // the alert added last: the one the list displays
+  bool _seeded = false;
   String? sid;
   int? version;
   String kind = 'gw';
   bool zoom = false;
   double radius = 15;
   String? target;
-  bool showGw = true, showGrb = true, showNu = true, showCand = true;
+  bool showGw = true, showGrb = true, showXray = true, showNu = true, showCand = true, showRadio = true;
   SkyObject? picked;
   ui.Image? _image;
   String _imageKey = '';
@@ -125,14 +130,16 @@ class _SkyViewState extends State<SkyView> {
     }
     for (final g in ((sky['grb'] as List?) ?? const []).cast<Map<String, dynamic>>()) {
       final name = '${g['instrument']} ${g['trigger'] ?? ''}'.trim();
-      out.add(SkyObject('grb', name, (g['ra'] as num).toDouble(), (g['dec'] as num).toDouble(), asDouble(g['err_deg']),
-          '$name${g['time'] != null ? ', ${fmtTime(DateTime.tryParse(g['time'] as String))} UTC' : ''}: '
-          'RA ${fmtNum(g['ra'] as num, sig: 6)}, Dec ${fmtNum(g['dec'] as num, sig: 6)}, radius ${fmtNum(g['err_deg'] as num?)} deg', 'grb:${g['id']}'));
+      if (g['burst_missing'] != true) {
+        out.add(SkyObject(highEnergyKind(g), name, (g['ra'] as num).toDouble(), (g['dec'] as num).toDouble(), asDouble(g['err_deg']),
+            '$name${g['time'] != null ? ', ${fmtTime(DateTime.tryParse(g['time'] as String))} UTC' : ''}: '
+            'RA ${fmtNum(g['ra'] as num, sig: 6)}, Dec ${fmtNum(g['dec'] as num, sig: 6)}, radius ${fmtNum(g['err_deg'] as num?)} deg', 'grb:${g['id']}'));
+      }
       final x = (g['xray'] as Map?)?.cast<String, dynamic>();
-      if (x != null && g['burst_missing'] != true) {
+      if (x != null) {
         out.add(SkyObject('xray', '${x['instrument']}', (x['ra'] as num).toDouble(), (x['dec'] as num).toDouble(),
             asDouble(x['err_deg']),
-            '${x['instrument']} position of $name: RA ${fmtNum(x['ra'] as num, sig: 8)}, Dec ${fmtNum(x['dec'] as num, sig: 8)}, '
+            '${x['instrument']} position${g['burst_missing'] == true ? ' (its burst is not in the store)' : ' of $name'}: RA ${fmtNum(x['ra'] as num, sig: 8)}, Dec ${fmtNum(x['dec'] as num, sig: 8)}, '
             'radius ${fmtNum(((x['err_deg'] as num?) ?? 0) * 3600)} arcsec', 'grb:${g['id']}'));
       }
     }
@@ -142,8 +149,17 @@ class _SkyViewState extends State<SkyView> {
           'Neutrino $name${n['time'] != null ? ', ${fmtTime(DateTime.tryParse(n['time'] as String))} UTC' : ''}: '
           'RA ${fmtNum(n['ra'] as num, sig: 6)}, Dec ${fmtNum(n['dec'] as num, sig: 6)}, 90 % radius ${fmtNum(n['err_deg'] as num?)} deg', 'nu:${n['id']}'));
     }
+    for (final r in ((sky['radio'] as List?) ?? const []).cast<Map<String, dynamic>>()) {
+      if (r['ra'] == null || r['dec'] == null) continue;
+      final name = '${r['instrument'] ?? ''} ${r['trigger'] ?? r['id']}'.trim();
+      out.add(SkyObject('radio', name, (r['ra'] as num).toDouble(), (r['dec'] as num).toDouble(), asDouble(r['err_deg']),
+          'Radio $name${r['time'] != null ? ', ${fmtTime(DateTime.tryParse(r['time'] as String))} UTC' : ''}: '
+          'RA ${fmtNum(r['ra'] as num, sig: 6)}, Dec ${fmtNum(r['dec'] as num, sig: 6)}, radius ${fmtNum(r['err_deg'] as num?)} deg', 'radio:${r['id']}'));
+    }
     return out;
   }
+
+  static String _day(DateTime d) => '${d.year}-${two(d.month)}-${two(d.day)}';
 
   @override
   Widget build(BuildContext context) {
@@ -169,22 +185,37 @@ class _SkyViewState extends State<SkyView> {
     // candidates on one side; on the other, the alerts that belong to no candidate
     final candidates = groups.where((g) => g.candidate).toList();
     final single = [for (final g in groups.where((g) => !g.candidate)) ...g.ids];
-    List<String> ofType(String t) => single.where((i) => follow.events[i]!.kind == t).toList()
-      ..sort((x, y) => (follow.events[y]!.time ?? DateTime.utc(1970)).compareTo(follow.events[x]!.time ?? DateTime.utc(1970)));
-    const types = ['gw', 'grb', 'nu', 'optical'];
     final bool alone = !fixed && (singles || candidates.isEmpty) && single.isNotEmpty;
-    if (alone) {
-      if (ofType(type).isEmpty) type = types.firstWhere((t) => ofType(t).isNotEmpty);
-      chosen.removeWhere((i) => !single.contains(i));
-      if (chosen.isEmpty) chosen.add(ofType(type).first); // the newest of the type
+    // the alerts in the chosen dates (UTC days; an alert without a time only when no date is set)...
+    int dayOf(DateTime t) => DateTime.utc(t.toUtc().year, t.toUtc().month, t.toUtc().day).millisecondsSinceEpoch;
+    bool inDates(String i) {
+      if (dates == null) return true;
+      final t = follow.events[i]!.time;
+      if (t == null) return false;
+      final d = dayOf(t);
+      return d >= DateTime.utc(dates!.start.year, dates!.start.month, dates!.start.day).millisecondsSinceEpoch &&
+          d <= DateTime.utc(dates!.end.year, dates!.end.month, dates!.end.day).millisecondsSinceEpoch;
     }
+
+    final dated = single.where(inDates).toList()
+      ..sort((x, y) => (follow.events[y]!.time ?? DateTime.utc(1970)).compareTo(follow.events[x]!.time ?? DateTime.utc(1970)));
+    // ...and among them those of the chosen type, newest first
+    final listed = type == 'all' ? dated : dated.where((i) => follow.events[i]!.kind == type).toList();
+    if (alone) {
+      shown.removeWhere((i) => !single.contains(i));
+      if (!_seeded) {
+        _seeded = true; // at first the newest alert; afterwards only what the user puts on the map
+        if (listed.isNotEmpty) shown.add(last = listed.first);
+      }
+    }
+    final chosen = alone ? shown : const <String>{};
     // default candidate: the first that has a GW alert, else the first follow-up
     final pool = fixed || candidates.isEmpty ? groups : candidates;
     final current = pool.where((g) => g.id == group).firstOrNull ??
         pool.where((g) => g.ids.any((i) => i.startsWith('gw:'))).firstOrNull ??
         pool.first;
     group = current.id;
-    final related = alone ? chosen.toSet() : current.ids.toSet();
+    final related = alone ? chosen : current.ids.toSet();
     // only this follow-up: its superevents, and its objects
     final gw = ((sky['gw'] as List?) ?? const [])
         .cast<Map<String, dynamic>>()
@@ -248,7 +279,7 @@ class _SkyViewState extends State<SkyView> {
     }
 
     final visible = objects
-        .where((o) => switch (o.kind) { 'optical' => showCand, 'nu' => showNu, _ => showGrb })
+        .where((o) => switch (o.kind) { 'optical' => showCand, 'nu' => showNu, 'xray' => showXray, 'radio' => showRadio, _ => showGrb })
         .toList();
 
     return ListView(padding: const EdgeInsets.all(12), children: [
@@ -268,43 +299,148 @@ class _SkyViewState extends State<SkyView> {
                       picked = null;
                     }))),
       if (alone) ...[
-        Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          const Text('Type'),
-          for (final t in types)
-            if (ofType(t).isNotEmpty)
-              ChoiceChip(
-                  label: Text('${follow.events[ofType(t).first]!.kindLabel} (${ofType(t).length})'),
-                  selected: type == t,
-                  onSelected: (_) => setState(() => type = t)),
-          TextButton(onPressed: () => setState(() => chosen.addAll(ofType(type))), child: const Text('Show all of this type')),
-          TextButton(onPressed: () => setState(() => chosen.removeWhere((i) => follow.events[i]!.kind == type)), child: const Text('Hide this type')),
+        // type and dates: what the list below holds
+        Wrap(spacing: 10, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          const SizedBox(width: 68, child: Text('Type')),
+          DropdownButton<String>(
+              value: type,
+              items: [
+                DropdownMenuItem(value: 'all', child: Text('All types (${dated.length})')),
+                for (final t in alertKinds)
+                  DropdownMenuItem(
+                      value: t,
+                      child: Text('${alertKindLabel(t)} (${dated.where((i) => follow.events[i]!.kind == t).length})'))
+              ],
+              onChanged: (v) => setState(() {
+                    type = v ?? 'all';
+                    target = null;
+                    picked = null;
+                  })),
+          OutlinedButton.icon(
+              icon: const Icon(Icons.date_range, size: 18),
+              label: Text(dates == null
+                  ? 'All dates'
+                  : (_day(dates!.start) == _day(dates!.end) ? _day(dates!.start) : '${_day(dates!.start)} to ${_day(dates!.end)}')),
+              onPressed: () async {
+                final times = [for (final i in single) follow.events[i]!.time].whereType<DateTime>().toList()..sort();
+                final now = DateTime.now();
+                final first = times.isEmpty ? DateTime(2015) : DateTime(times.first.toUtc().year, times.first.toUtc().month, times.first.toUtc().day);
+                final lastAlert = times.isEmpty ? now : DateTime(times.last.toUtc().year, times.last.toUtc().month, times.last.toUtc().day);
+                final r = await showDateRangePicker(
+                    context: context,
+                    firstDate: first,
+                    lastDate: lastAlert.isAfter(now) ? lastAlert : now,
+                    initialDateRange: dates,
+                    helpText: 'Alerts of these days (UTC)');
+                if (r != null && mounted) {
+                  setState(() {
+                    dates = r;
+                    target = null;
+                    picked = null;
+                  });
+                }
+              }),
+          if (dates != null)
+            IconButton(
+                tooltip: 'All dates',
+                icon: const Icon(Icons.clear, size: 18),
+                onPressed: () => setState(() {
+                      dates = null;
+                      target = null;
+                      picked = null;
+                    })),
         ]),
-        // the alerts of the chosen type; those ticked are drawn, whatever their type
-        ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 132),
-            child: SingleChildScrollView(
-                child: Wrap(spacing: 6, runSpacing: 2, children: [
-              for (final id in ofType(type))
-                FilterChip(
-                    label: Text('${follow.events[id]!.name}'
-                        '${follow.events[id]!.time != null ? '  ·  ${fmtTime(follow.events[id]!.time, seconds: false)}' : ''}'),
-                    selected: chosen.contains(id),
-                    onSelected: (v) => setState(() {
-                          v ? chosen.add(id) : chosen.remove(id);
-                          if (v && id.startsWith('gw:')) {
-                            sid = id.substring(3); // the map just ticked is the one shaded
-                            version = null;
-                          } else if (v) {
-                            target = id; // and the zoomed view centres on it
-                          }
-                        })),
-            ]))),
+        // the alerts of that type in those dates, newest first: each one chosen is added to the map
+        Row(children: [
+          const SizedBox(width: 78, child: Text('Alert')),
+          Expanded(
+              child: listed.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Text(
+                          'No ${type == 'all' ? '' : '${alertKindLabel(type)} '}alert${dates == null ? '' : ' in these dates'}.',
+                          style: Theme.of(context).textTheme.bodySmall))
+                  : DropdownButton<String>(
+                      key: const Key('alert-list'),
+                      isExpanded: true,
+                      value: shown.contains(last) && listed.contains(last) ? last : null,
+                      hint: const Text('Add an alert to the map'),
+                      items: [
+                        DropdownMenuItem(value: '*', child: Text('All ${listed.length} alert${listed.length == 1 ? '' : 's'} of this list')),
+                        for (final id in listed)
+                          DropdownMenuItem(
+                              value: id,
+                              child: Row(children: [
+                                // ticked: already on the map
+                                Icon(Icons.check, size: 16, color: shown.contains(id) ? pal.ink2 : Colors.transparent),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                    child: Text(
+                                        '${follow.events[id]!.time != null ? '${fmtTime(follow.events[id]!.time, seconds: false)} UTC' : 'time unknown'}'
+                                        '  ·  ${type == 'all' ? follow.events[id]!.label : follow.events[id]!.name}',
+                                        overflow: TextOverflow.ellipsis)),
+                              ]))
+                      ],
+                      onChanged: (v) => setState(() {
+                            picked = null;
+                            if (v == null) return;
+                            if (v == '*') {
+                              shown.addAll(listed);
+                              last = null;
+                              return;
+                            }
+                            shown.add(last = v); // over those already on the map
+                            if (v.startsWith('gw:')) {
+                              sid = v.substring(3); // its map is the one shaded
+                              version = null;
+                            } else {
+                              target = v; // and the zoomed view centres on it
+                            }
+                          }))),
+        ]),
+        // what is on the map, newest first: each can be taken off, or all at once
         Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Text(
-                '${chosen.length} alert${chosen.length == 1 ? '' : 's'} shown: '
-                '${(chosen.toList()..sort()).map((i) => follow.events[i]!.label).take(6).join(', ')}${chosen.length > 6 ? '...' : ''}',
-                style: Theme.of(context).textTheme.bodySmall)),
+            padding: const EdgeInsets.only(top: 2, bottom: 6),
+            child: shown.isEmpty
+                ? Text('The map is empty: choose an alert in the list to add it.', style: Theme.of(context).textTheme.bodySmall)
+                : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Expanded(
+                        child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxHeight: 104),
+                            child: SingleChildScrollView(
+                                child: Wrap(spacing: 6, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                              Text('On the map (${shown.length})', style: Theme.of(context).textTheme.bodySmall),
+                              for (final id in shown.toList()
+                                ..sort((x, y) =>
+                                    (follow.events[y]!.time ?? DateTime.utc(1970)).compareTo(follow.events[x]!.time ?? DateTime.utc(1970))))
+                                InputChip(
+                                    label: Text(follow.events[id]!.label),
+                                    visualDensity: VisualDensity.compact,
+                                    deleteButtonTooltipMessage: 'Remove from the map',
+                                    onPressed: () => setState(() {
+                                          // the zoomed view centres on it; a GW alert's map becomes the one shaded
+                                          if (id.startsWith('gw:')) {
+                                            sid = id.substring(3);
+                                            version = null;
+                                          } else {
+                                            target = id;
+                                          }
+                                        }),
+                                    onDeleted: () => setState(() {
+                                          shown.remove(id);
+                                          picked = null;
+                                        })),
+                            ])))),
+                    TextButton.icon(
+                        icon: const Icon(Icons.layers_clear, size: 18),
+                        label: const Text('Clear map'),
+                        onPressed: () => setState(() {
+                              shown.clear();
+                              last = null;
+                              target = null;
+                              picked = null;
+                            })),
+                  ])),
       ],
       if (!fixed && !alone)
         Row(children: [
@@ -400,8 +536,10 @@ class _SkyViewState extends State<SkyView> {
       Wrap(spacing: 6, children: [
         FilterChip(label: const Text('GW map'), selected: showGw, onSelected: (v) => setState(() => showGw = v)),
         FilterChip(label: const Text('GRB'), selected: showGrb, onSelected: (v) => setState(() => showGrb = v)),
-        FilterChip(label: const Text('Neutrinos'), selected: showNu, onSelected: (v) => setState(() => showNu = v)),
+        FilterChip(label: const Text('X-ray'), selected: showXray, onSelected: (v) => setState(() => showXray = v)),
         FilterChip(label: const Text('Optical'), selected: showCand, onSelected: (v) => setState(() => showCand = v)),
+        FilterChip(label: const Text('Neutrinos'), selected: showNu, onSelected: (v) => setState(() => showNu = v)),
+        FilterChip(label: const Text('Radio'), selected: showRadio, onSelected: (v) => setState(() => showRadio = v)),
       ]),
       const SizedBox(height: 8),
       if (gwTitle != null)
@@ -455,7 +593,7 @@ class _SkyViewState extends State<SkyView> {
           _Key(painter: (c, o) => c.drawLine(o - const Offset(7, 0), o + const Offset(7, 0), Paint()..color = pal.ink..strokeWidth = 1.5), label: '50 % and 90 % contours'),
         ],
         // only the kinds present in this follow-up
-        for (final (kind, label) in const [('optical', 'optical transient'), ('grb', 'GRB'), ('xray', 'X-ray position'), ('nu', 'neutrino (90 %)')])
+        for (final (kind, label) in const [('optical', 'optical transient'), ('grb', 'GRB'), ('xray', 'X-ray'), ('nu', 'neutrino (90 %)'), ('radio', 'radio')])
           if (visible.any((o) => o.kind == kind)) _Key(painter: (c, o) => _mark(c, o, kind, pal), label: label),
       ]),
       const SizedBox(height: 8),
@@ -471,12 +609,13 @@ class _SkyViewState extends State<SkyView> {
                 '${se?['retracted'] == true ? ' This superevent was retracted.' : ''}',
                 style: Theme.of(context).textTheme.bodySmall)),
       if (gw.isEmpty)
-        Text(alone ? 'No GW alert is ticked: no map to show.' : 'This follow-up has no GW alert: no map to show.', style: Theme.of(context).textTheme.bodySmall),
+        Text(alone ? 'No GW alert is on the map: no localisation to show.' : 'This follow-up has no GW alert: no map to show.', style: Theme.of(context).textTheme.bodySmall),
     ]);
   }
 }
 
-Color _kindColor(String kind, Palette pal) => switch (kind) { 'grb' || 'xray' => pal.series(1), 'nu' => pal.series(2), _ => pal.ink };
+Color _kindColor(String kind, Palette pal) =>
+    switch (kind) { 'grb' || 'xray' => pal.series(1), 'nu' => pal.series(2), 'radio' => pal.series(3), _ => pal.ink };
 
 void _mark(Canvas c, Offset o, String kind, Palette pal) {
   final col = _kindColor(kind, pal);
@@ -509,6 +648,13 @@ void _mark(Canvas c, Offset o, String kind, Palette pal) {
       });
     case 'nu':
       both((p) => c.drawRect(Rect.fromCenter(center: o, width: 10, height: 10), p));
+    case 'radio':
+      final tri = Path()
+        ..moveTo(o.dx, o.dy - 6)
+        ..lineTo(o.dx + 6, o.dy + 5)
+        ..lineTo(o.dx - 6, o.dy + 5)
+        ..close();
+      both((p) => c.drawPath(tri, p));
     default:
       both((p) => c.drawCircle(o, 5, p));
   }

@@ -191,6 +191,26 @@ void main() {
     });
   });
 
+  test('every detection type has its kind: GRB, X-ray, radio', () {
+    final f = FollowUps({
+      'optical': [], 'nu': [], 'gw': [],
+      'grb': [
+        {'id': '1', 'instrument': 'Fermi-GBM', 'trigger': '1', 'time': '2026-11-13T10:05:22Z', 'ra': 1.0, 'dec': 2.0},
+        {'id': 'WXT_1', 'instrument': 'WXT', 'trigger': null, 'time': '2026-11-14T19:40:35Z', 'ra': 1.0, 'dec': 2.0},
+        {'id': 'sb1', 'instrument': 'SVOM-ECLAIRs', 'trigger': 'sb1', 'time': '2026-11-13T14:30:59Z', 'ra': 1.0, 'dec': 2.0,
+          'xray': {'instrument': 'SVOM-MXT', 'ra': 1.0, 'dec': 2.0}},
+        {'id': 'x9', 'instrument': 'Swift-XRT', 'trigger': 'x9', 'time': null, 'ra': 1.0, 'dec': 2.0, 'burst_missing': true},
+      ],
+      'radio': [
+        {'id': 'r1', 'instrument': 'CHIME', 'trigger': 'r1', 'time': '2026-11-15T00:00:00Z', 'ra': 1.0, 'dec': 2.0},
+      ],
+    });
+    expect({for (final e in f.events.values) e.id: e.kind},
+        {'grb:1': 'grb', 'grb:WXT_1': 'xray', 'grb:sb1': 'grb', 'grb:x9': 'xray', 'radio:r1': 'radio'});
+    expect(f.events['grb:WXT_1']!.label, 'X-ray WXT');
+    expect(f.events.values.map((e) => e.kind).toSet().difference(alertKinds.toSet()), isEmpty);
+  });
+
   test('a follow-up holds only the alerts the pipeline attached together', () {
     final f = FollowUps(((captured['json'] as Map)['/api/sky'] as Map).cast<String, dynamic>());
     // from the candidate, the neutrino or the superevent: the same follow-up

@@ -118,12 +118,50 @@ void main() {
       await t.pumpAndSettle();
       await t.tap(find.text('Alerts without candidate (2)'));
       await t.pumpAndSettle();
-      expect(find.textContaining('1 alert shown: GW S261021fy'), findsOneWidget); // the newest GW alert alone
-      await t.tap(find.text('GRB (1)'));
+      // all types, all dates: the newest alert is the one on the map
+      expect(find.text('All types (2)'), findsOneWidget);
+      expect(find.text('All dates'), findsOneWidget);
+      expect(find.widgetWithText(InputChip, 'GW S261021fy (retracted)'), findsOneWidget);
+      expect(find.byType(InputChip), findsOneWidget);
+      // every detection type is in the type selector, with its number of alerts
+      await t.tap(find.text('All types (2)'));
       await t.pumpAndSettle();
-      await t.tap(find.textContaining('Swift-BAT 1519536').first); // ticked as well: both drawn together
+      for (final l in ['GW (1)', 'GRB (1)', 'X-ray (0)', 'Optical (0)', 'Neutrino (0)', 'Radio (0)']) {
+        expect(find.text(l), findsWidgets, reason: l);
+      }
+      await t.tap(find.text('GRB (1)').last);
       await t.pumpAndSettle();
-      expect(find.textContaining('2 alerts shown'), findsOneWidget);
+      // an alert chosen in the list is added to the map, over the one already there
+      expect(find.byType(InputChip), findsOneWidget);
+      await t.tap(find.byKey(const Key('alert-list')));
+      await t.pumpAndSettle();
+      await t.tap(find.textContaining('Swift-BAT 1519536').last);
+      await t.pumpAndSettle();
+      expect(find.byType(InputChip), findsNWidgets(2));
+      expect(find.text('On the map (2)'), findsOneWidget);
+      // one is taken off, then the map is cleared
+      await t.tap(find.byTooltip('Remove from the map').first);
+      await t.pumpAndSettle();
+      expect(find.byType(InputChip), findsOneWidget);
+      await t.tap(find.text('Clear map'));
+      await t.pumpAndSettle();
+      expect(find.byType(InputChip), findsNothing);
+      expect(find.textContaining('The map is empty'), findsOneWidget);
+      await t.tap(find.text('GRB (1)').first);
+      await t.pumpAndSettle();
+      await t.tap(find.text('X-ray (0)').last);
+      await t.pumpAndSettle();
+      expect(find.text('No X-ray alert.'), findsOneWidget);
+      await t.tap(find.text('X-ray (0)').first);
+      await t.pumpAndSettle();
+      await t.tap(find.text('All types (2)').last);
+      await t.pumpAndSettle();
+      // the whole list at once
+      await t.tap(find.byKey(const Key('alert-list')));
+      await t.pumpAndSettle();
+      await t.tap(find.text('All 2 alerts of this list').last);
+      await t.pumpAndSettle();
+      expect(find.byType(InputChip), findsNWidgets(2));
     });
     await shot(t, 'followup_gw_only', FollowUpScreen(state.followups.firstWhere((f) => f['id'] == 'gw:S261021fy')), phone);
     await shot(t, 'system_phone', const Shell(), const Size(412, 1500), act: () => t.tap(find.text('System').last));

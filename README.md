@@ -8,7 +8,7 @@ pressed, keeps the copy for good, and shows it offline. It sends no notification
 |---|---|
 | Logbook | every journal entry, newest first; search, filters by kind, problems only, date range; the values recorded with each entry |
 | Candidates | the follow-ups the pipeline labels as candidates (or all follow-ups): their alerts named by detection type (optical, GW, GRB, neutrino), what started them, why they are candidates; one page per follow-up with its steps, log, light curve, search and PE results, sky view |
-| Sky | first selector: the candidate; second selector: the alerts of that candidate only. The GW localisation (any stored version) is named on the map; all-sky or zoomed |
+| Sky | candidates: first selector, the candidate; second selector, the alerts of that candidate only. Alerts without candidate: a type selector (GW, GRB, X-ray, optical, neutrino, radio), a date selector (UTC days) and the list of the alerts, newest first; each alert chosen is added to the map over those already there, and they are removed one by one or with "Clear map". The GW localisation (any stored version) is named on the map; all-sky or zoomed |
 | System | link to the server, listeners, age of the run copy, outages and errors |
 | Settings | server address, access token, portal address; export to JSON or CSV |
 
