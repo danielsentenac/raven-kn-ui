@@ -87,6 +87,7 @@ IconData kindIcon(String kind) => switch (kind) {
       'gw_retraction' => Icons.undo,
       'grb_notice' => Icons.flash_on,
       'xray_position' => Icons.my_location,
+      'circular' => Icons.article,
       'nu_notice' || 'nu_retraction' => Icons.grain,
       'grb_attached' || 'nu_attached' => Icons.link,
       'grb_detached' || 'nu_detached' => Icons.link_off,

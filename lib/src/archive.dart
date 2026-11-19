@@ -35,7 +35,7 @@ const _oldKinds = {'candidate_new': 'optical_new', 'candidate_update': 'optical_
 /// Filter groups of the logbook.
 const kindGroups = <String, Set<String>>{
   'Optical': {'optical_new', 'optical_update', 'host_lookup', 'lookup_failed'},
-  'Alerts': {'gw_alert', 'gw_retraction', 'grb_notice', 'xray_position', 'nu_notice', 'nu_retraction'},
+  'Alerts': {'gw_alert', 'gw_retraction', 'grb_notice', 'xray_position', 'nu_notice', 'nu_retraction', 'circular'},
   'Associations': {'grb_attached', 'grb_detached', 'nu_attached', 'nu_detached', 'coincidence'},
   'Decisions': {'decision', 'search_request'},
   'Search and PE': {

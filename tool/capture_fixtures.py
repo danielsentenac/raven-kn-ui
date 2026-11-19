@@ -34,6 +34,9 @@ for c in resp["/api/optical"]["optical"]:
     for r in resp[p]["runs"]:
         q = f"/api/runs/{urllib.parse.quote(c['name'])}/{urllib.parse.quote(r['run'])}"
         resp[q] = get(q)
+resp["/api/circulars"] = get("/api/circulars")
+for c in resp["/api/circulars"]["circulars"]:
+    resp[f"/api/circulars/{c['id']}"] = get(f"/api/circulars/{c['id']}")
 cur = resp["/api/events?limit=2000&cursor="]["cursor"]
 resp[f"/api/events?limit=2000&cursor={urllib.parse.quote(cur)}"] = get(
     f"/api/events?limit=2000&cursor={urllib.parse.quote(cur)}")

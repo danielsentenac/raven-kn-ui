@@ -102,6 +102,11 @@ void main() {
       expect(s.archive.blob('map/S261020fx/2/gw'), isNotNull);
       expect(s.archive.blob('map/GW170817/1/gw'), isNotNull);
       expect(gzip.decode(s.archive.blob('map/S261020fx/1/gw')!).length, 12 * 128 * 128);
+      // GCN Circulars: the list, and the text of each one
+      expect(s.circulars.map((c) => c['id']), [90001, 90002, 90003, 90004, 90005, 90006, 90007, 90008]);
+      expect(s.circulars.first.containsKey('body'), isFalse);
+      expect(s.archive.doc('circular/90005')!['body'], contains('X-shooter'));
+      expect(requests.where((r) => r.startsWith('/api/circulars/')).length, 8);
 
       requests.clear();
       await s.sync();
@@ -241,6 +246,23 @@ void main() {
     expect(g.firstWhere((x) => x.ids.contains('gw:GW170817')).label, 'GW GW170817  +  GRB Fermi-GBM 524666471  +  Optical SSS17a');
     expect(f.groups(const []).map((x) => x.ids.toSet()).toSet().length, 4); // without the server's list: from the links
     expect(f.all.map((e) => e.kind).toSet(), {'optical', 'gw', 'grb', 'nu'});
+  });
+
+  test('what the circulars say about each alert', () {
+    final sky = ((captured['json'] as Map)['/api/sky'] as Map).cast<String, dynamic>();
+    final d = circularDigests(sky);
+    expect(d.keys.toSet(), {'grb:1519536', 'nu:IceCube-261020A', 'gw:S261020fx', 'optical:FIX-KN-1'});
+    expect(circularShort(d['grb:1519536']!), '5 circulars, optical detection, z = 0.42');
+    expect(circularLines(d['grb:1519536']!), [
+      '5 circulars: optical 3, X-ray 1, gamma 1',
+      'Optical search reported: detection (3 reports, first 2026-10-17 21:40 UTC); redshift 0.42 (GCN 90005).'
+    ]);
+    expect(circularShort(d['nu:IceCube-261020A']!), '2 circulars, optical upper limits');
+    expect(circularLines({'n': 1, 'bands': {'gamma': 1}, 'n_optical': 0}), ['1 circular: gamma 1', 'No optical search reported.']);
+    expect(circularShort({'n': 1, 'optical': null}), '1 circular, no optical report');
+    expect(circularAlerts({'links': [{'type': 'gw', 'id': 'S1', 'how': 'superevent name'}, {'type': 'optical', 'id': 'KN'}]}),
+        {'gw:S1', 'optical:KN'});
+    expect(circularDigests({'grb': [{'id': '1'}]}), isEmpty); // a server that does not read circulars
   });
 
   test('the GRB of an LVK GW x GRB coincidence joins the follow-up of its superevent', () {

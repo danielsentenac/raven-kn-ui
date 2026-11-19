@@ -7,10 +7,13 @@ pressed, keeps the copy for good, and shows it offline. It sends no notification
 | Screen | Shows |
 |---|---|
 | Logbook | every journal entry, newest first; search, filters by kind, problems only, date range; the values recorded with each entry |
-| Candidates | the follow-ups the pipeline labels as candidates (or all follow-ups): their alerts named by detection type (optical, GW, GRB, neutrino), what started them, why they are candidates; one page per follow-up with its steps, log, light curve, search and PE results, sky view |
-| Sky | candidates: first selector, the candidate; second selector, the alerts of that candidate only. Alerts without candidate: a type selector (GW, GRB, X-ray, optical, neutrino, radio), a date selector (UTC days) and the list of the alerts, newest first; each alert chosen is added to the map over those already there, and they are removed one by one or with "Clear map". The GW localisation (any stored version) is named on the map; all-sky or zoomed |
+| Candidates | the follow-ups the pipeline labels as candidates (or all follow-ups): their alerts named by detection type (optical, GW, GRB, neutrino), what started them, why they are candidates; for each alert, what the GCN Circulars report (number, optical detection or upper limits, redshift); one page per follow-up with its steps, log, light curve, search and PE results, sky view, and the circulars of each alert with their text |
+| Sky | candidates: first selector, the candidate; second selector, the alerts of that candidate only. Alerts without candidate: a type selector (GW, GRB, X-ray, optical, neutrino, radio), a date selector (UTC days) and the list of the alerts, newest first; each alert chosen is added to the map over those already there, and they are removed one by one or with "Clear map". The GW localisation (any stored version) is named on the map; all-sky or zoomed. Under the map, what the GCN Circulars report about each alert shown, which opens the list of its circulars |
 | System | link to the server, listeners, age of the run copy, outages and errors |
 | Settings | server address, access token, portal address; export to JSON or CSV |
+
+The GCN Circulars are linked to the alerts and labelled by the pipeline (keyword rules, see its
+`docs/listener.md`); with a server that does not read them, nothing about circulars is shown.
 
 ## Access through the Virgo portal
 
@@ -80,4 +83,4 @@ The same server can be used to try the application: address `http://127.0.0.1:87
 | `lib/src/archive.dart` | local SQLite copy: entries, documents, sky maps |
 | `lib/src/state.dart` | settings and sync |
 | `lib/src/healpix.dart` | HEALPix pixel of a position (checked against healpy), sky projections |
-| `lib/src/ui/` | screens; `plots.dart` is the one plot widget, `sky.dart` the sky view |
+| `lib/src/ui/` | screens; `plots.dart` is the one plot widget, `sky.dart` the sky view, `circulars.dart` the GCN Circulars of an alert |

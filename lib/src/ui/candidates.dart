@@ -4,6 +4,8 @@ library;
 import 'package:flutter/material.dart';
 
 import '../archive.dart';
+import '../followup.dart';
+import 'circulars.dart';
 import 'common.dart';
 import 'history.dart';
 import 'logbook.dart';
@@ -92,6 +94,11 @@ class _FollowUpTile extends StatelessWidget {
                 style: small?.copyWith(fontWeight: FontWeight.w600, color: isCand ? pal.ink : pal.ink2)),
             for (final r in reasons) Text('· $r', style: small),
             if (!isCand) Text('No link to another detection type, and nothing that marks it as a candidate.', style: small),
+            // what the GCN Circulars report about its alerts
+            for (final m in members)
+              if (m['circulars'] is Map)
+                Text('GCN  ·  ${typeLabel(m['type'] as String)} ${m['name']}: ${circularShort((m['circulars'] as Map).cast<String, dynamic>())}',
+                    style: small?.copyWith(color: pal.ink2)),
             const SizedBox(height: 10),
             HistoryDiagram(f),
           ]),
@@ -139,13 +146,17 @@ class FollowUpSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final reasons = ((f['reasons'] as List?) ?? const []).cast<String>();
-    return _section(context, f['candidate'] == true ? 'Candidate' : 'Follow-up, not a candidate', [
-      for (final r in reasons) Padding(padding: const EdgeInsets.only(bottom: 2), child: Text('· $r')),
-      if (reasons.isEmpty) const Text('No link to another detection type, and nothing that marks it as a candidate.'),
-      const SizedBox(height: 10),
-      Text('History: detections in order of time, then the pipeline', style: Theme.of(context).textTheme.bodySmall),
-      const SizedBox(height: 6),
-      HistoryDiagram(f),
+    final members = ((f['members'] as List?) ?? const []).cast<Map<String, dynamic>>();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _section(context, f['candidate'] == true ? 'Candidate' : 'Follow-up, not a candidate', [
+        for (final r in reasons) Padding(padding: const EdgeInsets.only(bottom: 2), child: Text('· $r')),
+        if (reasons.isEmpty) const Text('No link to another detection type, and nothing that marks it as a candidate.'),
+        const SizedBox(height: 10),
+        Text('History: detections in order of time, then the pipeline', style: Theme.of(context).textTheme.bodySmall),
+        const SizedBox(height: 6),
+        HistoryDiagram(f),
+      ]),
+      CircularsSection([for (final m in members) m['key'] as String]),
     ]);
   }
 }

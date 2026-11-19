@@ -28,6 +28,61 @@ String highEnergyKind(Map<String, dynamic> g) =>
         ? 'xray'
         : 'grb';
 
+/// What the GCN Circulars say about each alert of the server's sky answer: alert id ->
+/// digest (`n`, `bands`, `name`, `optical`, `n_optical`, `first_optical`, `redshift`).
+/// An alert without circular, or a server that does not read them, has no entry.
+Map<String, Map<String, dynamic>> circularDigests(Map<String, dynamic> sky) {
+  final out = <String, Map<String, dynamic>>{};
+  for (final (kind, key) in const [('optical', 'name'), ('grb', 'id'), ('nu', 'id'), ('gw', 'superevent_id'), ('radio', 'id')]) {
+    for (final a in ((sky[kind] as List?) ?? const []).cast<Map<String, dynamic>>()) {
+      if (a['circulars'] is Map) out['$kind:${a[key]}'] = (a['circulars'] as Map).cast<String, dynamic>();
+    }
+  }
+  return out;
+}
+
+/// The alerts a circular of the server's list is linked to, by their id here.
+Set<String> circularAlerts(Map<String, dynamic> circular) =>
+    {for (final l in ((circular['links'] as List?) ?? const []).cast<Map<String, dynamic>>()) '${l['type']}:${l['id']}'};
+
+/// Whether an optical search was reported, in a few words: `optical detection`,
+/// `optical upper limits`, `optical observation`, `no optical report`.
+String circularOptical(Map<String, dynamic> digest) => switch (digest['optical']) {
+      'detection' => 'optical detection',
+      'upper_limit' => 'optical upper limits',
+      'observation' => 'optical observation',
+      _ => 'no optical report',
+    };
+
+/// One line: `5 circulars, optical detection, z = 0.42`.
+String circularShort(Map<String, dynamic> digest) {
+  final n = (digest['n'] as num?)?.toInt() ?? 0;
+  final z = digest['redshift'] as num?;
+  return '$n circular${n == 1 ? '' : 's'}, ${circularOptical(digest)}${z != null ? ', z = ${_trim(z)}' : ''}';
+}
+
+String _trim(num v) => v.toString().replaceFirst(RegExp(r'\.0$'), '');
+
+/// The digest in full: the circulars by band, then the optical search.
+List<String> circularLines(Map<String, dynamic> digest) {
+  const names = {'optical': 'optical', 'xray': 'X-ray', 'radio': 'radio', 'gamma': 'gamma', 'gw': 'GW', 'nu': 'neutrino'};
+  final n = (digest['n'] as num?)?.toInt() ?? 0;
+  final bands = ((digest['bands'] as Map?) ?? const {}).cast<String, dynamic>();
+  final nOpt = (digest['n_optical'] as num?)?.toInt() ?? 0;
+  final first = digest['first_optical'] is String ? DateTime.tryParse(digest['first_optical'] as String)?.toUtc() : null;
+  String two(int v) => v.toString().padLeft(2, '0');
+  final z = digest['redshift'] as num?;
+  return [
+    '$n circular${n == 1 ? '' : 's'}'
+        '${bands.isEmpty ? '' : ': ${[for (final b in names.keys) if (bands[b] != null) '${names[b]} ${bands[b]}'].join(', ')}'}',
+    nOpt == 0
+        ? 'No optical search reported.'
+        : 'Optical search reported: ${circularOptical(digest).substring(8)} ($nOpt report${nOpt == 1 ? '' : 's'}'
+            '${first != null ? ', first ${first.year}-${two(first.month)}-${two(first.day)} ${two(first.hour)}:${two(first.minute)} UTC' : ''})'
+            '${z != null ? '; redshift ${_trim(z)}${digest['redshift_circular'] != null ? ' (GCN ${digest['redshift_circular']})' : ''}' : ''}.',
+  ];
+}
+
 /// One alert of the store, named by its detection type. Ids: `optical:<name>` (an optical
 /// transient, the pipeline's `OpticalTransient`), `grb:<id>` (a GRB or an X-ray notice: the
 /// id is the server's, the type is in [kind]), `nu:<id>`, `gw:<superevent>`, `radio:<id>`.

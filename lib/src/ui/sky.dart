@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 
 import '../followup.dart';
 import '../healpix.dart';
+import 'circulars.dart';
 import 'common.dart';
 
 const _skyOrder = 7; // reduced maps: nside 128
@@ -610,6 +611,12 @@ class _SkyViewState extends State<SkyView> {
                 style: Theme.of(context).textTheme.bodySmall)),
       if (gw.isEmpty)
         Text(alone ? 'No GW alert is on the map: no localisation to show.' : 'This follow-up has no GW alert: no map to show.', style: Theme.of(context).textTheme.bodySmall),
+      // what the GCN Circulars report about the alerts on the map
+      if (related.isNotEmpty)
+        Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: CircularsSection(related.toList()
+              ..sort((x, y) => (follow.events[y]?.time ?? DateTime.utc(1970)).compareTo(follow.events[x]?.time ?? DateTime.utc(1970))))),
     ]);
   }
 }

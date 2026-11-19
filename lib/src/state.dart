@@ -92,6 +92,11 @@ class AppState extends ChangeNotifier {
   List<Map<String, dynamic>> get followups =>
       ((archive.doc('followups')?['followups'] as List?) ?? const []).cast<Map<String, dynamic>>();
 
+  /// GCN Circulars linked to the alerts, oldest first, without their text
+  /// (`circular/<number>` holds it); empty with a server that does not read them.
+  List<Map<String, dynamic>> get circulars =>
+      ((archive.doc('circulars')?['circulars'] as List?) ?? const []).cast<Map<String, dynamic>>();
+
   /// Entries brought by the last sync.
   int get newCount => batch == 0 ? 0 : archive.countBatch(batch);
 
@@ -178,6 +183,23 @@ class AppState extends ChangeNotifier {
         archive.putDoc('followups', await api.getJson('/api/followups'));
       } on ApiException catch (e) {
         if (!e.notFound) rethrow; // an older server: no follow-ups
+      }
+      // GCN Circulars: the list, and the text of those not stored yet or read again by the server
+      try {
+        final cl = await api.getJson('/api/circulars');
+        for (final c in ((cl['circulars'] as List?) ?? const []).cast<Map<String, dynamic>>()) {
+          final key = 'circular/${c['id']}';
+          final stored = archive.doc(key);
+          if (stored != null && stored['received'] == c['received']) continue;
+          try {
+            archive.putDoc(key, await api.getJson('/api/circulars/${c['id']}'));
+          } on ApiException catch (e) {
+            if (!e.notFound) rethrow;
+          }
+        }
+        archive.putDoc('circulars', cl);
+      } on ApiException catch (e) {
+        if (!e.notFound) rethrow; // an older server: no circulars
       }
       final list = await api.getJson('/api/optical');
       archive.putDoc('optical', list);

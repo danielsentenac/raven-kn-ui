@@ -4,6 +4,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../followup.dart';
 import 'common.dart';
 
 String typeLabel(String type) => switch (type) { 'optical' => 'Optical', 'gw' => 'GW', 'grb' => 'GRB', 'xray' => 'X-ray', 'nu' => 'Neutrino', 'radio' => 'Radio', _ => type };
@@ -74,6 +75,7 @@ class HistoryDiagram extends StatelessWidget {
             (m['instrument'] as String?) ?? 'instrument not recorded',
             t == null ? 'time unknown' : '${fmtTime(t)} UTC',
             sinceFirst(t, first),
+            if (m['circulars'] is Map) circularShort((m['circulars'] as Map).cast<String, dynamic>()),
           ],
           border: pal.series(0)));
     }

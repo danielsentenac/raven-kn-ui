@@ -11,6 +11,7 @@ import 'package:raven_kn_logbook/main.dart';
 import 'package:raven_kn_logbook/src/archive.dart';
 import 'package:raven_kn_logbook/src/state.dart';
 import 'package:raven_kn_logbook/src/ui/candidates.dart';
+import 'package:raven_kn_logbook/src/ui/circulars.dart';
 import 'package:raven_kn_logbook/src/ui/common.dart';
 import 'package:raven_kn_logbook/src/ui/logbook.dart';
 import 'package:raven_kn_logbook/src/ui/system.dart';
@@ -162,6 +163,42 @@ void main() {
       await t.tap(find.text('All 2 alerts of this list').last);
       await t.pumpAndSettle();
       expect(find.byType(InputChip), findsNWidgets(2));
+    });
+    // GCN Circulars: on the map's alerts, in the list of follow-ups, then the circulars of one alert and a text
+    await shot(t, 'sky_circulars', const Shell(), const Size(1200, 1500), act: () async {
+      await t.tap(find.text('Sky').last);
+      await t.pumpAndSettle();
+      expect(find.text('GCN Circulars'), findsOneWidget);
+      expect(find.text('Neutrino IceCube-261020A  =  IceCube-261020A'), findsOneWidget);
+      expect(find.textContaining('Optical search reported: upper limits (1 report'), findsOneWidget);
+      await t.tap(find.text('Alerts without candidate (2)'));
+      await t.pumpAndSettle();
+      expect(find.text('No circular linked to it.'), findsOneWidget); // the newest alert, S261021fy
+      await t.tap(find.byKey(const Key('alert-list')));
+      await t.pumpAndSettle();
+      await t.tap(find.textContaining('Swift-BAT 1519536').last);
+      await t.pumpAndSettle();
+      expect(find.text('GRB Swift-BAT 1519536  =  GRB 261017A'), findsOneWidget);
+      expect(find.textContaining('redshift 0.42 (GCN 90005)'), findsOneWidget);
+    });
+    await shot(t, 'candidates_all_circulars', const Shell(), const Size(1200, 1700), act: () async {
+      await t.tap(find.text('Candidates').last);
+      await t.pumpAndSettle();
+      await t.tap(find.textContaining('All follow-ups'));
+      await t.pumpAndSettle();
+      expect(find.text('GCN  ·  GRB Swift-BAT 1519536: 5 circulars, optical detection, z = 0.42'), findsOneWidget);
+      expect(find.text('GCN  ·  Neutrino IceCube-261020A: 2 circulars, optical upper limits'), findsOneWidget);
+    });
+    await shot(t, 'circulars_of_alert', const CircularsScreen('grb:1519536', 'GRB Swift-BAT 1519536'), phone, act: () async {
+      expect(find.textContaining('GCN 9000'), findsNWidgets(5));
+      expect(find.text('GRB 261017A: VLT/X-shooter spectroscopic redshift z = 0.42'), findsOneWidget);
+      expect(find.textContaining('linked by the trigger number'), findsOneWidget);
+    });
+    await shot(t, 'circular_text', const CircularsScreen('grb:1519536', 'GRB Swift-BAT 1519536'), phone, act: () async {
+      await t.tap(find.text('GRB 261017A: NOT optical upper limits'));
+      await t.pumpAndSettle();
+      expect(find.text('GCN Circular 90003'), findsOneWidget);
+      expect(find.textContaining('No source is detected at the XRT position'), findsOneWidget);
     });
     await shot(t, 'followup_gw_only', FollowUpScreen(state.followups.firstWhere((f) => f['id'] == 'gw:S261021fy')), phone);
     await shot(t, 'system_phone', const Shell(), const Size(412, 1500), act: () => t.tap(find.text('System').last));
