@@ -96,6 +96,14 @@ void main() {
     await shot(t, 'followup_gw170817_desktop', CandidateScreen('SSS17a', followUp: state.followups.firstWhere((f) => f['optical'] == 'SSS17a')), const Size(1480, 900));
     await shot(t, 'followup_fix_desktop', const CandidateScreen('FIX-KN-1'), desk);
     await shot(t, 'lightcurve_sss17a_desktop', const CandidateScreen('SSS17a'), desk, act: () => t.tap(find.text('Light curve')));
+    await shot(t, 'lightcurve_fix_reported', const CandidateScreen('FIX-KN-1'), desk, act: () async {
+      await t.tap(find.text('Light curve'));
+      await t.pumpAndSettle();
+      expect(find.text('Reported in GCN Circulars (3)'), findsOneWidget);
+      expect(find.text('r = 20.6 ± 0.1 (AB)  ·  2026-10-21 08:10 UTC (date in the text)  ·  GCN 90008'), findsOneWidget);
+      expect(find.textContaining('i > 22.1  ·  2026-10-22 08:20 UTC'), findsOneWidget);
+      expect(find.text('reported in GCN, not verified'), findsOneWidget); // the series of the plot
+    });
     await shot(t, 'lightcurve_sss17a_phone', const CandidateScreen('SSS17a'), phone, act: () => t.tap(find.text('Light curve')));
     await shot(t, 'search_sss17a_desktop', const CandidateScreen('SSS17a'), const Size(1000, 1900), act: () => t.tap(find.text('GW search')));
     await shot(t, 'search_fix_phone', const CandidateScreen('FIX-KN-1'), const Size(412, 2600), act: () => t.tap(find.text('GW search')));
@@ -188,6 +196,10 @@ void main() {
       await t.pumpAndSettle();
       expect(find.text('GCN  ·  GRB Swift-BAT 1519536: 5 circulars, optical detection, z = 0.42'), findsOneWidget);
       expect(find.text('GCN  ·  Neutrino IceCube-261020A: 2 circulars, optical upper limits'), findsOneWidget);
+      // the redshift of a circular puts this burst beyond the range of a GW search
+      expect(
+          find.text('· GRB 261017A: redshift 0.42 (GCN 90005), luminosity distance 2.37 Gpc: too far for a GW search (limit 500 Mpc)'),
+          findsOneWidget);
     });
     await shot(t, 'circulars_of_alert', const CircularsScreen('grb:1519536', 'GRB Swift-BAT 1519536'), phone, act: () async {
       expect(find.textContaining('GCN 9000'), findsNWidgets(5));
@@ -199,6 +211,11 @@ void main() {
       await t.pumpAndSettle();
       expect(find.text('GCN Circular 90003'), findsOneWidget);
       expect(find.textContaining('No source is detected at the XRT position'), findsOneWidget);
+    });
+    await shot(t, 'followup_grb_too_far', FollowUpScreen(state.followups.firstWhere((f) => f['id'] == 'grb:1519536')), phone,
+        act: () async {
+      expect(find.text('Distance'), findsOneWidget);
+      expect(find.textContaining('too far for a GW search'), findsOneWidget);
     });
     await shot(t, 'followup_gw_only', FollowUpScreen(state.followups.firstWhere((f) => f['id'] == 'gw:S261021fy')), phone);
     await shot(t, 'system_phone', const Shell(), const Size(412, 1500), act: () => t.tap(find.text('System').last));

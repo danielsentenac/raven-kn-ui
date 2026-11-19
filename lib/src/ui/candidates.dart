@@ -64,6 +64,7 @@ class _FollowUpTile extends StatelessWidget {
     final pal = Palette.of(context);
     final members = ((f['members'] as List?) ?? const []).cast<Map<String, dynamic>>();
     final reasons = ((f['reasons'] as List?) ?? const []).cast<String>();
+    final notes = ((f['notes'] as List?) ?? const []).cast<String>();
     final att = f['attention'] as String?;
     final isCand = f['candidate'] == true;
     final small = Theme.of(context).textTheme.bodySmall;
@@ -94,6 +95,8 @@ class _FollowUpTile extends StatelessWidget {
                 style: small?.copyWith(fontWeight: FontWeight.w600, color: isCand ? pal.ink : pal.ink2)),
             for (final r in reasons) Text('· $r', style: small),
             if (!isCand) Text('No link to another detection type, and nothing that marks it as a candidate.', style: small),
+            // a GRB whose redshift puts it beyond the range of a GW search
+            for (final n in notes) Text('· $n', style: small?.copyWith(fontWeight: FontWeight.w600)),
             // what the GCN Circulars report about its alerts
             for (final m in members)
               if (m['circulars'] is Map)
@@ -147,7 +150,14 @@ class FollowUpSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     final reasons = ((f['reasons'] as List?) ?? const []).cast<String>();
     final members = ((f['members'] as List?) ?? const []).cast<Map<String, dynamic>>();
+    final notes = ((f['notes'] as List?) ?? const []).cast<String>();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (notes.isNotEmpty)
+        _section(context, 'Distance', [
+          for (final n in notes) Padding(padding: const EdgeInsets.only(bottom: 2), child: Text('· $n')),
+          Text('From the redshift announced in a GCN Circular; the optical transients are not changed.',
+              style: Theme.of(context).textTheme.bodySmall),
+        ]),
       _section(context, f['candidate'] == true ? 'Candidate' : 'Follow-up, not a candidate', [
         for (final r in reasons) Padding(padding: const EdgeInsets.only(bottom: 2), child: Text('· $r')),
         if (reasons.isEmpty) const Text('No link to another detection type, and nothing that marks it as a candidate.'),
@@ -355,11 +365,23 @@ class _LightCurve extends StatelessWidget {
     final pal = Palette.of(context);
     final c = (doc['optical'] as Map).cast<String, dynamic>();
     final phot = ((c['photometry'] as List?) ?? const []).cast<Map<String, dynamic>>();
-    if (phot.isEmpty) return const Center(child: Text('No photometry.'));
+    // magnitudes reported in GCN Circulars: shown apart, not part of the photometry until accepted
+    final reported = ((doc['reported_photometry'] as List?) ?? const []).cast<Map<String, dynamic>>();
+    final timed = reported.where((p) => p['time'] is String && p['accepted'] != true).toList();
+    if (phot.isEmpty && reported.isEmpty) return const Center(child: Text('No photometry.'));
     final det = phot.where((p) => p['upper_limit'] != true).toList();
-    final mjd0 = ((det.isNotEmpty ? det : phot).map((p) => (p['mjd'] as num).toDouble()).reduce((a, b) => a < b ? a : b));
-    final t0 = DateTime.parse(((det.isNotEmpty ? det : phot).firstWhere((p) => (p['mjd'] as num).toDouble() == mjd0))['time'] as String);
-    double days(String iso) => DateTime.parse(iso).difference(t0).inMilliseconds / 86400000.0;
+    // origin of the time axis: the first detection, else the first reported magnitude that has a time
+    final DateTime? t0 = phot.isNotEmpty
+        ? DateTime.parse((det.isNotEmpty ? det : phot).reduce((a, b) => (a['mjd'] as num) <= (b['mjd'] as num) ? a : b)['time'] as String)
+        : (timed.isEmpty ? null : timed.map((p) => DateTime.parse(p['time'] as String)).reduce((a, b) => a.isBefore(b) ? a : b));
+    final mjd0 = phot.isEmpty
+        ? 0.0
+        : (det.isNotEmpty ? det : phot).map((p) => (p['mjd'] as num).toDouble()).reduce((a, b) => a < b ? a : b);
+    double days(String iso) => t0 == null ? 0 : DateTime.parse(iso).difference(t0).inMilliseconds / 86400000.0;
+    String magText(Map<String, dynamic> p) =>
+        '${p['band']} ${p['upper_limit'] == true ? '>' : '='} ${fmtNum(p['mag'] as num, sig: 4)}'
+        '${p['mag_err'] != null ? ' ± ${fmtNum(p['mag_err'] as num, sig: 2)}' : ''}'
+        '${p['system'] != null ? ' (${p['system']})' : ''}';
 
     final by = <String, List<Pt>>{};
     final slot = <String, int>{};
@@ -370,7 +392,15 @@ class _LightCurve extends StatelessWidget {
           err: asDouble(p['mag_err']), limit: p['upper_limit'] == true, note: '${p['band']} ${p['survey'] ?? ''}'.trim()));
     }
     final names = by.keys.toList()..sort((a, b) => (slot[a]! < 0 ? 99 : slot[a]!).compareTo(slot[b]! < 0 ? 99 : slot[b]!));
-    final series = [for (final n in names) Series(n, slot[n]! < 0 ? pal.other : pal.series(slot[n]!), by[n]!)];
+    final series = [
+      for (final n in names) Series(n, slot[n]! < 0 ? pal.other : pal.series(slot[n]!), by[n]!),
+      if (timed.isNotEmpty)
+        Series('reported in GCN, not verified', pal.muted, [
+          for (final p in timed)
+            Pt(days(p['time'] as String), (p['mag'] as num).toDouble(),
+                err: asDouble(p['mag_err']), limit: p['upper_limit'] == true, note: '${magText(p)}, GCN ${p['circular']}')
+        ]),
+    ];
     final marks = <VMark>[];
     for (final m in ((doc['marks'] as List?) ?? const []).cast<Map<String, dynamic>>()) {
       if (m['time'] == null) continue;
@@ -381,21 +411,45 @@ class _LightCurve extends StatelessWidget {
       if (w != null) VBand(days(w['start'] as String), days(w['end'] as String), 'merger-time window (${w['method']})', pal.series(7)),
     ];
     final nLim = phot.where((p) => p['upper_limit'] == true).length;
+    final small = Theme.of(context).textTheme.bodySmall;
     return ListView(padding: const EdgeInsets.all(12), children: [
-      XYPlot(
-          title: 'Photometry of ${c['name']}',
-          series: series,
-          vmarks: marks,
-          vbands: bands,
-          invertY: true,
-          height: 320,
-          xLabel: 'days since first detection (${fmtTime(t0, seconds: false)} UTC)',
-          yLabel: 'magnitude'),
+      if (t0 != null && series.isNotEmpty)
+        XYPlot(
+            title: 'Photometry of ${c['name']}',
+            series: series,
+            vmarks: marks,
+            vbands: bands,
+            invertY: true,
+            height: 320,
+            xLabel: 'days since ${phot.isEmpty ? 'the first reported magnitude' : 'first detection'} (${fmtTime(t0, seconds: false)} UTC)',
+            yLabel: 'magnitude'),
       const SizedBox(height: 8),
       Text(
-          '${phot.length - nLim} detections${nLim > 0 ? ', $nLim upper limits (open triangles)' : ''}. '
-          'Brighter is up. Tap a point for its values.',
-          style: Theme.of(context).textTheme.bodySmall),
+          phot.isEmpty
+              ? 'No photometry in the pipeline for this optical transient.'
+              : '${phot.length - nLim} detections${nLim > 0 ? ', $nLim upper limits (open triangles)' : ''}. '
+                  'Brighter is up. Tap a point for its values.',
+          style: small),
+      if (reported.isNotEmpty) ...[
+        const SizedBox(height: 14),
+        Text('Reported in GCN Circulars (${reported.length})', style: Theme.of(context).textTheme.titleSmall),
+        Text(
+            'Read from the text of the circulars by a pattern, not verified: these magnitudes are not used by the '
+            'pipeline until they are accepted (raven-kn accept-photometry). One without a time cannot be plotted.',
+            style: small),
+        const SizedBox(height: 4),
+        for (final p in reported)
+          Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(
+                    '${magText(p)}  ·  '
+                    '${p['time'] is String ? '${fmtTime(DateTime.tryParse(p['time'] as String), seconds: false)} UTC (${p['time_from']})' : 'no time found'}'
+                    '  ·  GCN ${p['circular']}${p['accepted'] == true ? '  ·  accepted' : ''}',
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text('${p['text']}', style: small?.copyWith(color: pal.ink2), maxLines: 3, overflow: TextOverflow.ellipsis),
+              ])),
+      ],
     ]);
   }
 }
