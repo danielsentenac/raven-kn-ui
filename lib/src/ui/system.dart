@@ -19,7 +19,7 @@ String connTitle(Conn c) => switch (c) {
       Conn.ok => 'Connected to the server',
       Conn.noNetwork => 'No network connection',
       Conn.portalClosed => 'Virgo portal session closed or expired',
-      Conn.unauthorized => 'Access token refused',
+      Conn.unauthorized => 'LVK Targeted search token refused',
       Conn.serverError => 'The server answered with an error',
       Conn.notConfigured => 'Server not set',
       Conn.unknown => 'Not synced in this session',
@@ -125,7 +125,7 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  TextEditingController? _url, _token, _portal, _user, _pass, _cert;
+  TextEditingController? _url, _token, _virgo, _portal, _user, _pass, _cert;
   bool? _auto;
   bool _csv = false;
   DateTimeRange? _range;
@@ -135,6 +135,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void dispose() {
     _url?.dispose();
     _token?.dispose();
+    _virgo?.dispose();
     _portal?.dispose();
     _user?.dispose();
     _pass?.dispose();
@@ -172,6 +173,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final state = AppScope.of(context);
     _url ??= TextEditingController(text: state.serverUrl);
     _token ??= TextEditingController(text: state.token);
+    _virgo ??= TextEditingController(text: state.virgoSearchToken);
     _portal ??= TextEditingController(text: state.portalUrl);
     _user ??= TextEditingController(text: state.portalUser);
     _pass ??= TextEditingController(text: state.portalPassword);
@@ -185,7 +187,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const SizedBox(height: 8),
         TextField(controller: _url, decoration: const InputDecoration(labelText: 'Address of raven-kn serve', hintText: 'http://host.example.org:8765', border: OutlineInputBorder()), keyboardType: TextInputType.url, autocorrect: false),
         const SizedBox(height: 12),
-        TextField(controller: _token, decoration: const InputDecoration(labelText: 'Access token', border: OutlineInputBorder()), obscureText: true, autocorrect: false, enableSuggestions: false),
+        TextField(controller: _token, decoration: const InputDecoration(labelText: 'LVK Targeted search token', border: OutlineInputBorder()), obscureText: true, autocorrect: false, enableSuggestions: false),
+        Padding(
+            padding: const EdgeInsets.only(top: 4, left: 4),
+            child: Text('Reads the logbook, with the results obtained on LVK data. Kept for searches on LVK data outside the Virgo site.',
+                style: Theme.of(context).textTheme.bodySmall)),
+        const SizedBox(height: 12),
+        TextField(controller: _virgo, decoration: const InputDecoration(labelText: 'Virgo Targeted search token', border: OutlineInputBorder()), obscureText: true, autocorrect: false, enableSuggestions: false),
+        Padding(
+            padding: const EdgeInsets.only(top: 4, left: 4),
+            child: Text(
+                'To start a targeted search on the Virgo site. '
+                '${switch (state.virgoSearchStatus) {
+                  'granted' => 'Accepted by the server at the last sync.',
+                  'refused' => 'Refused by the server at the last sync.',
+                  'not configured' => 'The server has no such token: no search can be started from here.',
+                  _ => state.virgoSearchToken.isEmpty ? 'Not set.' : 'Not checked yet: the server did not say.',
+                }}',
+                style: Theme.of(context).textTheme.bodySmall)),
         const SizedBox(height: 12),
         TextField(controller: _portal, decoration: const InputDecoration(labelText: 'Address of the Virgo portal (for the automatic login)', hintText: 'https://portal.example.org/login', border: OutlineInputBorder()), keyboardType: TextInputType.url, autocorrect: false),
         const SizedBox(height: 20),
@@ -210,7 +229,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const Expanded(child: Text('The portal refused this login. Automatic login is stopped until you save it again.')),
               ])),
         const SizedBox(height: 6),
-        Text('The token, the portal login and its password are kept on this device, in the application\'s private storage, not encrypted. '
+        Text('The tokens, the portal login and its password are kept on this device, in the application\'s private storage, not encrypted. '
             'The password is sent only to the portal address above, over a verified HTTPS connection.',
             style: Theme.of(context).textTheme.bodySmall),
         const SizedBox(height: 12),
@@ -233,7 +252,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ));
                     if (ok != true) return;
                   }
-                  state.saveSettings(serverUrl: _url!.text, token: _token!.text, portalUrl: _portal!.text);
+                  state.saveSettings(serverUrl: _url!.text, token: _token!.text, portalUrl: _portal!.text, virgoSearchToken: _virgo!.text);
                   state.savePortalLogin(user: _user!.text, password: _pass!.text, auto: _auto!, certName: _cert!.text);
                   nav.pop();
                   state.sync();

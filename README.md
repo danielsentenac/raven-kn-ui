@@ -10,10 +10,15 @@ pressed, keeps the copy for good, and shows it offline. It sends no notification
 | Candidates | the follow-ups the pipeline labels as candidates (or all follow-ups): their alerts named by detection type (optical, GW, GRB, neutrino), what started them, why they are candidates; for each alert, what the GCN Circulars report (number, optical detection or upper limits, redshift), and whether that redshift puts a GRB within the range of a GW search or too far; one page per follow-up with its steps, log, light curve (with, apart, the magnitudes reported in GCN Circulars, not verified), search and PE results, sky view, and the circulars of each alert with their text |
 | Sky | candidates: first selector, the candidate; second selector, the alerts of that candidate only. Alerts without candidate: a type selector (GW, GRB, X-ray, optical, neutrino, radio), a date selector (UTC days) and the list of the alerts, newest first; each alert chosen is added to the map over those already there, and they are removed one by one or with "Clear map". The GW localisation (any stored version) is named on the map; all-sky or zoomed. Under the map, what the GCN Circulars report about each alert shown, which opens the list of its circulars |
 | System | link to the server, listeners, age of the run copy, outages and errors |
-| Settings | server address, access token, portal address; export to JSON or CSV |
+| Settings | server address, LVK Targeted search token (the reading token), Virgo Targeted search token, portal address; export to JSON or CSV |
 
 The GCN Circulars are linked to the alerts and labelled by the pipeline (keyword rules, see its
 `docs/listener.md`); with a server that does not read them, nothing about circulars is shown.
+
+Two tokens are set in Settings. The **LVK Targeted search token** is the reading token of the service: it
+gives the logbook, with the results obtained on LVK data when it is the LVK one, and is kept for searches
+on LVK data outside the Virgo site. The **Virgo Targeted search token** is sent beside it and is needed to
+start a targeted search on the Virgo site; Settings shows whether the server accepted it at the last sync.
 
 ## Access through the Virgo portal
 
@@ -41,7 +46,7 @@ says so instead of guessing.
   on the portal certificate" makes the check use that name. Verification is never switched off.
 - If the portal refuses the login, no further automatic attempt is made until the login is saved
   again, so that a wrong password cannot lock the account.
-- The access token, the portal login and its password are stored in the application's private
+- The two tokens, the portal login and its password are stored in the application's private
   database, not encrypted (owner-only file on Linux; excluded from Android backups).
 - `dart run tool/portal_probe.dart <portal URL> [certificate name]` checks the first two steps against the real portal without
   credentials.

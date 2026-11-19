@@ -468,7 +468,7 @@ class _Runs extends StatelessWidget {
       if (hidden > 0)
         Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: Text('$hidden run${hidden == 1 ? '' : 's'} on LVK data not shown: the access token does not allow them.',
+            child: Text('$hidden run${hidden == 1 ? '' : 's'} on LVK data not shown: the token saved in Settings does not give access to LVK data.',
                 style: Theme.of(context).textTheme.bodySmall)),
       for (final r in runs.reversed) _RunCard(r, state.archive.doc('run/$name/${r['run']}')),
     ]);

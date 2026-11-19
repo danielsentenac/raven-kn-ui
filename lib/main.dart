@@ -20,7 +20,7 @@ Future<void> main() async {
   final db = p.join(dir.path, 'logbook.sqlite');
   final state = AppState(Archive.open(db));
   if (Platform.isLinux) {
-    // the database holds the access token and the portal password: owner only
+    // the database holds the tokens and the portal password: owner only
     try {
       await Process.run('chmod', ['600', db]);
       await Process.run('chmod', ['700', dir.path]);

@@ -102,6 +102,9 @@ void main() {
       expect(s.archive.blob('map/S261020fx/2/gw'), isNotNull);
       expect(s.archive.blob('map/GW170817/1/gw'), isNotNull);
       expect(gzip.decode(s.archive.blob('map/S261020fx/1/gw')!).length, 12 * 128 * 128);
+      // no Virgo targeted-search token here: nothing to say about it
+      expect(s.virgoSearchToken, '');
+      expect(s.virgoSearchStatus, isNull);
       // GCN Circulars: the list, and the text of each one
       expect(s.circulars.map((c) => c['id']), [90001, 90002, 90003, 90004, 90005, 90006, 90007, 90008]);
       expect(s.circulars.first.containsKey('body'), isFalse);
@@ -159,6 +162,34 @@ void main() {
       await s.sync(); // and the new server is read from its beginning
       expect(s.archive.count(const LogQuery()), greaterThan(50));
       expect(s.batch, 1);
+    });
+
+    test('the Virgo targeted-search token is sent beside the reading token, and its answer kept', () async {
+      String? sent;
+      Map<String, dynamic> virgo = {'configured': true, 'granted': true};
+      final s = make(client: () => MockClient((req) async {
+            sent = req.headers['X-Raven-KN-Virgo-Search'];
+            expect(req.headers['Authorization'], 'Bearer lvktok');
+            if (req.url.path != '/api/health') return http.Response('{"service":"raven-kn","error":"not found"}', 404, headers: {'x-raven-kn': '1'});
+            return http.Response(jsonEncode({'service': 'raven-kn', 'lvk': true, 'targeted_search': {'virgo': virgo}}), 200, headers: {'x-raven-kn': '1'});
+          }));
+      s.saveSettings(serverUrl: 'http://server:8765', token: 'lvktok', portalUrl: '', virgoSearchToken: ' vts ');
+      expect(s.virgoSearchToken, 'vts');
+      await s.sync();
+      expect(sent, 'vts');
+      expect(s.virgoSearchStatus, 'granted');
+      virgo = {'configured': true, 'granted': false};
+      await s.sync();
+      expect(s.virgoSearchStatus, 'refused');
+      virgo = {'configured': false, 'granted': false};
+      await s.sync();
+      expect(s.virgoSearchStatus, 'not configured');
+      // another save without the token keeps it; an empty one removes it
+      s.saveSettings(serverUrl: 'http://server:8765', token: 'lvktok', portalUrl: '');
+      expect(s.virgoSearchToken, 'vts');
+      s.saveSettings(serverUrl: 'http://server:8765', token: 'lvktok', portalUrl: '', virgoSearchToken: '');
+      expect(s.virgoSearchToken, '');
+      expect(s.virgoSearchStatus, isNull);
     });
 
     test('a refused token is reported as such', () async {

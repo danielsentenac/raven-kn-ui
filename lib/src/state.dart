@@ -32,7 +32,19 @@ class AppState extends ChangeNotifier {
   int batch = 0;
 
   String get serverUrl => archive.meta('server_url') ?? '';
+  /// The reading token ("LVK Targeted search token" in Settings).
   String get token => archive.meta('token') ?? '';
+
+  /// The Virgo targeted-search token: needed to start a targeted search on the Virgo site.
+  String get virgoSearchToken => archive.meta('virgo_search_token') ?? '';
+
+  /// What the server said of that token at the last sync: `granted`, `refused`,
+  /// `not configured` (the server has none), or null (no token here, or a server that does not know it).
+  String? get virgoSearchStatus {
+    final v = ((health?['targeted_search'] as Map?)?['virgo'] as Map?)?.cast<String, dynamic>();
+    if (v == null || virgoSearchToken.isEmpty) return null;
+    return v['configured'] != true ? 'not configured' : (v['granted'] == true ? 'granted' : 'refused');
+  }
   /// Login page of the firewall portal, set in Settings; empty when not set.
   String get portalUrl => archive.meta('portal_url') ?? '';
 
@@ -67,7 +79,7 @@ class AppState extends ChangeNotifier {
   /// Saves the settings. A local copy belongs to one server: with another
   /// server address, the copy of the previous one is removed, so that the
   /// data of two stores are never mixed.
-  void saveSettings({required String serverUrl, required String token, required String portalUrl}) {
+  void saveSettings({required String serverUrl, required String token, required String portalUrl, String? virgoSearchToken}) {
     if (wouldReplaceData(serverUrl)) {
       archive.clearData();
       batch = 0;
@@ -75,6 +87,7 @@ class AppState extends ChangeNotifier {
     }
     archive.setMeta('server_url', serverUrl.trim());
     archive.setMeta('token', token.trim());
+    if (virgoSearchToken != null) archive.setMeta('virgo_search_token', virgoSearchToken.trim());
     archive.setMeta('portal_url', portalUrl.trim());
     conn = serverUrl.trim().isEmpty ? Conn.notConfigured : Conn.unknown;
     connMessage = '';
@@ -149,7 +162,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> _syncOnce() async {
     _step('Contacting the server');
-    final api = Api(serverUrl, token, client: clientFactory?.call());
+    final api = Api(serverUrl, token, client: clientFactory?.call(), virgoSearchToken: virgoSearchToken);
     try {
       final health = await api.getJson('/api/health');
       if (health['service'] != 'raven-kn') {

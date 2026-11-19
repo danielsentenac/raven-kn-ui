@@ -40,12 +40,16 @@ class ApiException implements Exception {
 }
 
 class Api {
-  Api(String base, this.token, {http.Client? client, this.timeout = const Duration(seconds: 20)})
+  Api(String base, this.token, {http.Client? client, this.timeout = const Duration(seconds: 20), this.virgoSearchToken = ''})
       : base = base.trim().replaceAll(RegExp(r'/+$'), ''),
         _client = client ?? http.Client();
 
   final String base;
   final String token;
+
+  /// The Virgo targeted-search token, sent beside the reading token when set: the
+  /// server says in its health answer whether it accepts it.
+  final String virgoSearchToken;
   final Duration timeout;
   final http.Client _client;
 
@@ -74,6 +78,7 @@ class Api {
       ..followRedirects = false
       ..headers['Authorization'] = 'Bearer $token'
       ..headers['Accept'] = 'application/json';
+    if (virgoSearchToken.isNotEmpty) req.headers['X-Raven-KN-Virgo-Search'] = virgoSearchToken;
     final http.Response r;
     try {
       r = await http.Response.fromStream(await _client.send(req).timeout(timeout));
@@ -92,7 +97,7 @@ class Api {
           : 'HTTP ${r.statusCode} from another service';
       throw ApiException(Conn.portalClosed, 'The answer does not come from the server ($what)');
     }
-    if (r.statusCode == 401) throw ApiException(Conn.unauthorized, 'The server refused the access token');
+    if (r.statusCode == 401) throw ApiException(Conn.unauthorized, 'The server refused the LVK Targeted search token');
     if (r.statusCode == 404) throw ApiException(Conn.ok, 'Not found: $path', notFound: true);
     if (r.statusCode != 200) {
       var msg = 'HTTP ${r.statusCode}';
