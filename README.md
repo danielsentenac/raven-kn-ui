@@ -20,6 +20,12 @@ gives the logbook, with the results obtained on LVK data when it is the LVK one,
 on LVK data outside the Virgo site. The **Virgo Targeted search token** is sent beside it and is needed to
 start a targeted search on the Virgo site; Settings shows whether the server accepted it at the last sync.
 
+With the Virgo Targeted search token accepted, the "GW search" tab of an optical transient has a
+"Start targeted search" button: on the site data (the detectors' online strain kept on the Virgo site) or on
+the O4 replay (a test of the chain), with the coherent or the network statistic. The application only asks:
+the launcher on the Virgo site checks which detectors have observing data and runs the search, or refuses
+with the reason for each detector. The requests and what became of them are listed under the button.
+
 ## Access through the Virgo portal
 
 The server is inside the Virgo network. The application tells four cases apart:

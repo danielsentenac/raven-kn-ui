@@ -42,7 +42,7 @@ void main() {
   });
 
   Future<void> shot(WidgetTester t, String name, Widget child, Size size,
-      {Brightness b = Brightness.light, Future<void> Function()? act}) async {
+      {Brightness b = Brightness.light, Future<void> Function()? act, AppState? st}) async {
     t.view.physicalSize = size;
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
@@ -50,7 +50,7 @@ void main() {
     await t.pumpWidget(RepaintBoundary(
         key: key,
         child: AppScope(
-            state: state,
+            state: st ?? state,
             child: MaterialApp(
                 debugShowCheckedModeBanner: false,
                 theme: ThemeData(
@@ -108,6 +108,41 @@ void main() {
     await shot(t, 'search_sss17a_desktop', const CandidateScreen('SSS17a'), const Size(1000, 1900), act: () => t.tap(find.text('GW search')));
     await shot(t, 'search_fix_phone', const CandidateScreen('FIX-KN-1'), const Size(412, 2600), act: () => t.tap(find.text('GW search')));
     await shot(t, 'search_sss17a_dark', const CandidateScreen('SSS17a'), const Size(700, 1500), b: Brightness.dark, act: () => t.tap(find.text('GW search')));
+    // starting a search: without the Virgo token, then with it and with two earlier requests
+    await shot(t, 'search_start_no_token', const CandidateScreen('SSS17a'), phone, act: () async {
+      await t.tap(find.text('GW search'));
+      await t.pumpAndSettle();
+      expect(find.text('Start a targeted search'), findsOneWidget);
+      expect(find.textContaining('needs the Virgo Targeted search token'), findsOneWidget);
+      expect(find.text('Start targeted search'), findsNothing);
+    });
+    final a2 = Archive.memory();
+    final s2 = AppState(a2, clientFactory: () => fixtureServer());
+    s2.saveSettings(serverUrl: 'http://server:8765', token: 'lvktok', portalUrl: '', virgoSearchToken: 'vts');
+    await t.runAsync(s2.sync);
+    a2.putDoc('health', {...a2.doc('health')!, 'targeted_search': {'virgo': {'configured': true, 'granted': true}}});
+    a2.putDoc('optical/FIX-KN-1', {
+      ...a2.doc('optical/FIX-KN-1')!,
+      'launches': [
+        {'id': 'a', 'status': 'refused', 'data': 'site', 'statistic': 'coherent', 'requested': '2026-11-19T17:00:00.000Z',
+          'detail': 'fewer than two detectors with analysable data (H1: not in observing mode (state vector); L1: not in observing mode (state vector))'},
+        {'id': 'b', 'status': 'done', 'data': 'replay', 'statistic': 'coherent', 'requested': '2026-11-19T17:20:00.000Z',
+          'detail': 'asked for from the application; TEST on replayed O4 data: the window of 6 s is moved from GPS 1478634368 to 1479141000, the latest replay data'},
+      ],
+    });
+    await shot(t, 'search_start', const CandidateScreen('FIX-KN-1'), const Size(900, 1100), st: s2, act: () async {
+      await t.tap(find.text('GW search'));
+      await t.pumpAndSettle();
+      expect(find.text('Start targeted search'), findsOneWidget);
+      expect(find.textContaining('Refused  ·  site data, coherent'), findsOneWidget);
+      expect(find.textContaining('Done  ·  O4 replay (test), coherent'), findsOneWidget);
+      await t.tap(find.text('O4 replay (test)'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Start targeted search'));
+      await t.pumpAndSettle();
+      expect(find.textContaining('A TEST on the O4 data replayed'), findsOneWidget); // the confirmation
+      await t.tap(find.text('Cancel'));
+    });
     await shot(t, 'sky_fix_zoom', const CandidateScreen('FIX-KN-1'), phone, act: () => t.tap(find.text('Sky').last));
   });
 

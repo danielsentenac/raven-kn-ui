@@ -65,7 +65,7 @@ class Api {
     }
   }
 
-  Future<http.Response> _get(String path) async {
+  Future<http.Response> _get(String path, {Map<String, dynamic>? post}) async {
     if (base.isEmpty) throw ApiException(Conn.notConfigured, 'No server address set');
     final Uri uri;
     try {
@@ -74,11 +74,15 @@ class Api {
     } on FormatException {
       throw ApiException(Conn.notConfigured, 'The server address is not a valid URL');
     }
-    final req = http.Request('GET', uri)
+    final req = http.Request(post == null ? 'GET' : 'POST', uri)
       ..followRedirects = false
       ..headers['Authorization'] = 'Bearer $token'
       ..headers['Accept'] = 'application/json';
     if (virgoSearchToken.isNotEmpty) req.headers['X-Raven-KN-Virgo-Search'] = virgoSearchToken;
+    if (post != null) {
+      req.headers['Content-Type'] = 'application/json';
+      req.body = jsonEncode(post);
+    }
     final http.Response r;
     try {
       r = await http.Response.fromStream(await _client.send(req).timeout(timeout));
@@ -98,6 +102,14 @@ class Api {
       throw ApiException(Conn.portalClosed, 'The answer does not come from the server ($what)');
     }
     if (r.statusCode == 401) throw ApiException(Conn.unauthorized, 'The server refused the LVK Targeted search token');
+    if (post != null && (r.statusCode == 400 || r.statusCode == 403)) {
+      // the server is there and says why it does not do what was asked
+      var why = 'refused (HTTP ${r.statusCode})';
+      try {
+        why = (jsonDecode(r.body) as Map)['error']?.toString() ?? why;
+      } catch (_) {}
+      throw ApiException(Conn.ok, why);
+    }
     if (r.statusCode == 404) throw ApiException(Conn.ok, 'Not found: $path', notFound: true);
     if (r.statusCode != 200) {
       var msg = 'HTTP ${r.statusCode}';
@@ -124,6 +136,16 @@ class Api {
   }
 
   Future<Uint8List> getBytes(String path) async => (await _get(path)).bodyBytes;
+
+  /// Asks the server to do something; its answer, or an [ApiException] with its reason.
+  Future<Map<String, dynamic>> postJson(String path, Map<String, dynamic> body) async {
+    final r = await _get(path, post: body);
+    try {
+      return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+    } catch (_) {
+      throw ApiException(Conn.serverError, 'Unreadable answer for $path');
+    }
+  }
 
   void close() => _client.close();
 }

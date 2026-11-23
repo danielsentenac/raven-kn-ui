@@ -206,7 +206,7 @@ class CandidateScreen extends StatelessWidget {
           _FollowUp(doc, fetched, followUp ?? state.followups.where((f) => f['optical'] == name).firstOrNull),
           LogList(query: LogQuery(optical: name)),
           _LightCurve(doc),
-          _Runs(name, runs, (doc['hidden_runs'] as int?) ?? 0),
+          _Runs(name, runs, (doc['hidden_runs'] as int?) ?? 0, ((doc['launches'] as List?) ?? const []).cast<Map<String, dynamic>>()),
           SkyView(focus: name),
         ]),
       ),
@@ -223,6 +223,22 @@ Widget _section(BuildContext c, String title, List<Widget> children) => Card(
           const SizedBox(height: 6),
           ...children,
         ])));
+
+/// The distance of a decision. Without a redshift or a distance the stored
+/// numbers are those of the assumed prior, the same for every transient: they
+/// are not shown as an estimate. (Decisions written before the pipeline
+/// recorded `distance_informed` are judged on their list of constraints.)
+String distanceText(Map<String, dynamic> di, String Function(Map?, String) range) {
+  final cons = ((di['constraints'] as List?) ?? const []).map((e) => e.toString());
+  final informed = di['distance_informed'] as bool? ??
+      cons.any((c) => c.startsWith('redshift') || c.startsWith('distance') || c.startsWith('lc_fit'));
+  if (informed) return range(di['luminosity_distance_mpc'] as Map?, 'Mpc');
+  final prior = RegExp(r'D_L < ([0-9.]+) Mpc').firstMatch((di['distance_prior'] ?? '').toString())?.group(1);
+  final limit = prior == null ? null : double.tryParse(prior);
+  return limit == null
+      ? 'not constrained (no redshift or distance)'
+      : 'not constrained (no redshift or distance; assumed below ${fmtNum(limit)} Mpc)';
+}
 
 Widget _fact(BuildContext c, String k, String v) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 2),
@@ -284,7 +300,7 @@ class _FollowUp extends StatelessWidget {
           if (win != null)
             _fact(context, 'Merger-time window',
                 '${fmtNum((win['duration_h'] as num) * 3600)} s, from ${win['method']} (GPS ${fmtNum(win['gps_start'] as num?, sig: 12)})'),
-          if (di != null) _fact(context, 'Distance', range(di['luminosity_distance_mpc'] as Map?, 'Mpc')),
+          if (di != null) _fact(context, 'Distance', distanceText(di, range)),
           if (di != null) _fact(context, 'Viewing angle', range(di['viewing_angle_deg'] as Map?, 'deg')),
           if (det != null)
             _fact(context, 'Expected network SNR',
@@ -454,17 +470,125 @@ class _LightCurve extends StatelessWidget {
   }
 }
 
-class _Runs extends StatelessWidget {
-  const _Runs(this.name, this.runs, this.hidden);
+class _Runs extends StatefulWidget {
+  const _Runs(this.name, this.runs, this.hidden, this.launches);
   final String name;
   final List<Map<String, dynamic>> runs;
   final int hidden;
 
+  /// Searches asked for from the application, with what became of them.
+  final List<Map<String, dynamic>> launches;
+
+  @override
+  State<_Runs> createState() => _RunsState();
+}
+
+class _RunsState extends State<_Runs> {
+  String data = 'site', statistic = 'coherent';
+  bool sending = false;
+  String? message;
+
+  String get name => widget.name;
+  List<Map<String, dynamic>> get runs => widget.runs;
+  int get hidden => widget.hidden;
+
+  Future<void> _start(BuildContext context) async {
+    final state = AppScope.of(context);
+    final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+              title: const Text('Start a targeted search'),
+              content: Text(data == 'replay'
+                  ? 'A TEST on the O4 data replayed on the Virgo site: the search of $name is run on the latest replay data, '
+                      'which have nothing to do with the sky of this alert.'
+                  : 'The search of $name is run on the Virgo site, on the online strain of the detectors around its window. '
+                      'It is refused if fewer than two detectors have observing data there.'),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Start')),
+              ],
+            ));
+    if (ok != true || !mounted) return;
+    setState(() {
+      sending = true;
+      message = null;
+    });
+    final err = await state.requestSearch(name, data: data, statistic: statistic);
+    if (!mounted) return;
+    setState(() {
+      sending = false;
+      message = err == null ? 'Asked for. The launcher on the Virgo site takes it within seconds; sync to follow it.' : 'Not started: $err';
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    if (runs.isEmpty && hidden == 0) return const Center(child: Text('No search has been run for this optical transient.'));
+    final pal = Palette.of(context);
+    final small = Theme.of(context).textTheme.bodySmall;
+    final busy = widget.launches.any((l) => l['status'] == 'requested' || l['status'] == 'running');
     return ListView(padding: const EdgeInsets.only(bottom: 24), children: [
+      _section(context, 'Start a targeted search', [
+        if (!state.canStartSearch)
+          Text(
+              switch (state.virgoSearchStatus) {
+                'refused' => 'The server refused the Virgo Targeted search token saved in Settings.',
+                'not configured' => 'The server has no Virgo Targeted search token: no search can be started from here.',
+                _ => 'Starting a search needs the Virgo Targeted search token (Settings).',
+              },
+              style: small)
+        else ...[
+          Wrap(spacing: 12, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'site', label: Text('Site data')),
+                  ButtonSegment(value: 'replay', label: Text('O4 replay (test)')),
+                ],
+                selected: {data},
+                onSelectionChanged: (s) => setState(() => data = s.first)),
+            SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'coherent', label: Text('Coherent')),
+                  ButtonSegment(value: 'network', label: Text('Network')),
+                ],
+                selected: {statistic},
+                onSelectionChanged: (s) => setState(() => statistic = s.first)),
+            FilledButton.icon(
+                icon: const Icon(Icons.play_arrow, size: 18),
+                label: Text(sending ? 'Asking...' : 'Start targeted search'),
+                onPressed: sending || busy ? null : () => _start(context)),
+          ]),
+          const SizedBox(height: 6),
+          Text(
+              busy
+                  ? 'A search of this optical transient is already waiting or running.'
+                  : 'Run on the Virgo site by the launcher, from the frames kept there. The search decision does not have to be "triggered".',
+              style: small),
+          if (message != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(message!, style: const TextStyle(fontWeight: FontWeight.w600))),
+        ],
+        // what was asked for from the application, newest first
+        for (final l in widget.launches.reversed)
+          Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Icon(
+                    StatusStyle.of(switch (l['status']) { 'requested' => 'pending', 'refused' => 'held', final s => '$s' }, context).icon,
+                    size: 18,
+                    color: StatusStyle.of(switch (l['status']) { 'requested' => 'pending', 'refused' => 'held', final s => '$s' }, context).color),
+                const SizedBox(width: 6),
+                Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(
+                      '${switch (l['status']) { 'requested' => 'Waiting for the launcher', 'running' => 'Running', 'done' => 'Done', 'refused' => 'Refused', 'failed' => 'Failed', final s => '$s' }}'
+                      '  ·  ${l['data'] == 'replay' ? 'O4 replay (test)' : 'site data'}, ${l['statistic']}'
+                      '  ·  asked ${fmtTime(DateTime.tryParse(l['requested'] as String? ?? ''), seconds: false)} UTC',
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                  if ((l['detail'] as String? ?? '').isNotEmpty) Text(l['detail'] as String, style: small?.copyWith(color: pal.ink2)),
+                ])),
+              ])),
+      ]),
+      if (runs.isEmpty && hidden == 0)
+        const Padding(padding: EdgeInsets.all(16), child: Text('No search has been run for this optical transient.')),
       if (hidden > 0)
         Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),

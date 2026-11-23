@@ -12,7 +12,7 @@ import 'package:raven_kn_logbook/src/archive.dart';
 import 'package:raven_kn_logbook/src/followup.dart';
 import 'package:raven_kn_logbook/src/healpix.dart';
 import 'package:raven_kn_logbook/src/state.dart';
-import 'package:raven_kn_logbook/src/ui/candidates.dart' show filterOf;
+import 'package:raven_kn_logbook/src/ui/candidates.dart' show distanceText, filterOf;
 import 'package:raven_kn_logbook/src/ui/history.dart' show sinceFirst;
 import 'package:raven_kn_logbook/src/ui/logbook.dart' show exportEntries;
 import 'package:raven_kn_logbook/src/ui/plots.dart';
@@ -20,6 +20,24 @@ import 'package:raven_kn_logbook/src/ui/plots.dart';
 import 'support.dart';
 
 void main() {
+  test('a distance that is only the prior is not shown as an estimate', () {
+    String range(Map? m, String unit) => '${m?['median']} $unit';
+    final prior = {
+      'luminosity_distance_mpc': {'median': 1194, 'lower': 554, 'upper': 1475},
+      'constraints': ['prompt GRB theta<~30.0 deg'],
+      'distance_prior': 'uniform in volume, D_L < 1500.0 Mpc',
+    };
+    expect(distanceText(prior, range), 'not constrained (no redshift or distance; assumed below 1500 Mpc)');
+    expect(distanceText({...prior, 'distance_informed': false}, range), contains('not constrained'));
+    expect(
+        distanceText({
+          ...prior,
+          'constraints': ['redshift(spectroscopic) z=0.01', 'prompt GRB theta<~30.0 deg']
+        }, range),
+        '1194 Mpc');
+    expect(distanceText({...prior, 'distance_informed': true}, range), '1194 Mpc');
+  });
+
   test('ang2pixNest agrees with healpy', () {
     final ref = (jsonDecode(File('test/fixtures/healpix.json').readAsStringSync()) as List).cast<Map<String, dynamic>>();
     expect(ref.length, greaterThan(1000));
@@ -190,6 +208,31 @@ void main() {
       s.saveSettings(serverUrl: 'http://server:8765', token: 'lvktok', portalUrl: '', virgoSearchToken: '');
       expect(s.virgoSearchToken, '');
       expect(s.virgoSearchStatus, isNull);
+    });
+
+    test('a targeted search is asked for with both tokens; a refusal gives its reason', () async {
+      final posts = <(String, String, String?)>[];
+      var answer = http.Response('{"launch":{"id":"X","status":"requested"}}', 200, headers: {'x-raven-kn': '1'});
+      final fixture = fixtureServer();
+      final s = make(client: () => MockClient((req) async {
+            if (req.method == 'POST') {
+              posts.add((req.url.path, req.body, req.headers['X-Raven-KN-Virgo-Search']));
+              expect(req.headers['Authorization'], 'Bearer lvktok');
+              return answer;
+            }
+            return fixture.get(req.url, headers: req.headers);
+          }));
+      s.saveSettings(serverUrl: 'http://server:8765', token: 'lvktok', portalUrl: '', virgoSearchToken: 'vts');
+      await s.sync();
+      expect(s.conn, Conn.ok, reason: s.connMessage);
+      expect(s.canStartSearch, isFalse); // the captured server does not know that token
+      expect(await s.requestSearch('FIX-KN-1', data: 'replay', statistic: 'coherent'), isNull);
+      expect(posts.single, ('/api/optical/FIX-KN-1/search', '{"data":"replay","statistic":"coherent"}', 'vts'));
+      expect(s.archive.doc('optical/FIX-KN-1')!['stale'], isNull, reason: '${s.conn} ${s.connMessage}'); // read again by the sync that followed
+      answer = http.Response('{"service":"raven-kn","error":"a search of FIX-KN-1 is already waiting or running"}', 400, headers: {'x-raven-kn': '1'});
+      expect(await s.requestSearch('FIX-KN-1', data: 'site', statistic: 'network'), 'a search of FIX-KN-1 is already waiting or running');
+      answer = http.Response('{"service":"raven-kn","error":"the Virgo targeted-search token is required to start a search"}', 403, headers: {'x-raven-kn': '1'});
+      expect(await s.requestSearch('FIX-KN-1', data: 'site', statistic: 'network'), contains('token is required'));
     });
 
     test('a refused token is reported as such', () async {

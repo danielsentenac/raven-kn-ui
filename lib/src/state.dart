@@ -61,6 +61,28 @@ class AppState extends ChangeNotifier {
 
   bool get canAutoLogin => portalAuto && portalUrl.isNotEmpty && portalUser.isNotEmpty && portalPassword.isNotEmpty && !portalRefused;
 
+  /// Whether a targeted search can be started from here: the server accepted the Virgo targeted-search token.
+  bool get canStartSearch => virgoSearchStatus == 'granted';
+
+  /// Asks the server for a targeted search of the optical transient [optical], on the
+  /// data of the Virgo site ([data] `site`) or on the replayed O4 data (`replay`, a test).
+  /// Returns null when the request is recorded (the local copy is then synced), else why not.
+  Future<String?> requestSearch(String optical, {required String data, required String statistic}) async {
+    final api = Api(serverUrl, token, client: clientFactory?.call(), virgoSearchToken: virgoSearchToken);
+    try {
+      await api.postJson('/api/optical/${Uri.encodeComponent(optical)}/search', {'data': data, 'statistic': statistic});
+    } on ApiException catch (e) {
+      return e.message;
+    } catch (e) {
+      return 'The request failed: $e';
+    } finally {
+      api.close();
+    }
+    archive.putDoc('optical/$optical', {...?archive.doc('optical/$optical'), 'stale': true}); // read again at the sync
+    await sync();
+    return null;
+  }
+
   void savePortalLogin({required String user, required String password, required bool auto, String? certName}) {
     archive.setMeta('portal_user', user.trim());
     archive.setMeta('portal_password', password);
@@ -225,6 +247,7 @@ class AppState extends ChangeNotifier {
         // without a journal entry (a run copied from the cluster, a store rebuilt)
         final stored = archive.doc(key);
         final same = stored != null &&
+            stored['stale'] != true &&
             jsonEncode(stored['steps']) == jsonEncode(summaries.firstWhere((c) => c['name'] == name)['steps']);
         if (!touched.contains(name) && same && !scopeChanged) continue;
         _step('Reading $name');
