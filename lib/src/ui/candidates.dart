@@ -235,6 +235,17 @@ Widget _section(BuildContext c, String title, List<Widget> children) => Card(
           ...children,
         ])));
 
+/// Unit of a time axis for values in days, and what to multiply them by:
+/// days when they span three days or more, else hours, minutes or seconds.
+(String, double) timeUnit(Iterable<double> days) {
+  if (days.isEmpty) return ('days', 1);
+  final span = days.reduce((a, b) => a > b ? a : b) - days.reduce((a, b) => a < b ? a : b);
+  if (span >= 3) return ('days', 1);
+  if (span >= 3 / 24) return ('hours', 24);
+  if (span >= 3 / 1440) return ('minutes', 1440);
+  return span > 0 ? ('seconds', 86400) : ('days', 1);
+}
+
 /// The distance of a decision. Without a redshift or a distance the stored
 /// numbers are those of the assumed prior, the same for every transient: they
 /// are not shown as an estimate. (Decisions written before the pipeline
@@ -405,6 +416,16 @@ class _LightCurve extends StatelessWidget {
         ? 0.0
         : (det.isNotEmpty ? det : phot).map((p) => (p['mjd'] as num).toDouble()).reduce((a, b) => a < b ? a : b);
     double days(String iso) => t0 == null ? 0 : DateTime.parse(iso).difference(t0).inMilliseconds / 86400000.0;
+    // the unit of the time axis follows what is shown: a burst and its first magnitudes are seconds
+    // or minutes apart, a light curve days
+    final (unit, k) = timeUnit([
+      for (final p in phot) (p['mjd'] as num).toDouble() - mjd0,
+      for (final p in timed) days(p['time'] as String),
+      for (final m in ((doc['marks'] as List?) ?? const []).cast<Map<String, dynamic>>())
+        if (m['time'] != null) days(m['time'] as String),
+      for (final key in const ['start', 'end'])
+        if ((doc['window'] as Map?)?[key] != null) days((doc['window'] as Map)[key] as String),
+    ]);
     String magText(Map<String, dynamic> p) =>
         '${p['band']} ${p['upper_limit'] == true ? '>' : '='} ${fmtNum(p['mag'] as num, sig: 4)}'
         '${p['mag_err'] != null ? ' ± ${fmtNum(p['mag_err'] as num, sig: 2)}' : ''}'
@@ -415,7 +436,7 @@ class _LightCurve extends StatelessWidget {
     for (final p in phot) {
       final (label, s) = filterOf(p['band'] as String? ?? '');
       slot[label] = s;
-      by.putIfAbsent(label, () => []).add(Pt((p['mjd'] as num).toDouble() - mjd0, (p['mag'] as num).toDouble(),
+      by.putIfAbsent(label, () => []).add(Pt(((p['mjd'] as num).toDouble() - mjd0) * k, (p['mag'] as num).toDouble(),
           err: asDouble(p['mag_err']), limit: p['upper_limit'] == true, note: '${p['band']} ${p['survey'] ?? ''}'.trim()));
     }
     final names = by.keys.toList()..sort((a, b) => (slot[a]! < 0 ? 99 : slot[a]!).compareTo(slot[b]! < 0 ? 99 : slot[b]!));
@@ -424,18 +445,18 @@ class _LightCurve extends StatelessWidget {
       if (timed.isNotEmpty)
         Series('reported in GCN, not verified', pal.muted, [
           for (final p in timed)
-            Pt(days(p['time'] as String), (p['mag'] as num).toDouble(),
+            Pt(days(p['time'] as String) * k, (p['mag'] as num).toDouble(),
                 err: asDouble(p['mag_err']), limit: p['upper_limit'] == true, note: '${magText(p)}, GCN ${p['circular']}')
         ]),
     ];
     final marks = <VMark>[];
     for (final m in ((doc['marks'] as List?) ?? const []).cast<Map<String, dynamic>>()) {
       if (m['time'] == null) continue;
-      marks.add(VMark(days(m['time'] as String), m['label'] as String, pal.ink2));
+      marks.add(VMark(days(m['time'] as String) * k, m['label'] as String, pal.ink2));
     }
     final w = (doc['window'] as Map?)?.cast<String, dynamic>();
     final bands = [
-      if (w != null) VBand(days(w['start'] as String), days(w['end'] as String), 'merger-time window (${w['method']})', pal.series(7)),
+      if (w != null) VBand(days(w['start'] as String) * k, days(w['end'] as String) * k, 'merger-time window (${w['method']})', pal.series(7)),
     ];
     final nLim = phot.where((p) => p['upper_limit'] == true).length;
     final small = Theme.of(context).textTheme.bodySmall;
@@ -448,7 +469,7 @@ class _LightCurve extends StatelessWidget {
             vbands: bands,
             invertY: true,
             height: 320,
-            xLabel: 'days since ${phot.isEmpty ? 'the first reported magnitude' : 'first detection'} (${fmtTime(t0, seconds: false)} UTC)',
+            xLabel: '$unit since ${phot.isEmpty ? 'the first reported magnitude' : 'first detection'} (${fmtTime(t0, seconds: false)} UTC)',
             yLabel: 'magnitude'),
       const SizedBox(height: 8),
       Text(

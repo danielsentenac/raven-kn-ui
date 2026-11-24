@@ -1,5 +1,6 @@
 // What the GCN Circulars about a follow-up report, by category: prompt
-// emission, afterglow, spectroscopy, images and links. The pipeline reads
+// emission, afterglow, spectroscopy (each with its plots and pages), the data
+// files they link to, and the sky maps shown with the sky view. The pipeline reads
 // these from the text by keyword rules; nothing here is verified, so each
 // value is shown with its circular and the sentence it comes from.
 
@@ -17,7 +18,7 @@ String reportedTitle(String category) => switch (category) {
       'prompt' => 'Prompt emission',
       'afterglow' => 'Afterglow',
       'spectroscopy' => 'Spectroscopy',
-      _ => 'Images and links',
+      _ => 'Available data',
     };
 
 /// Kinds of a category in the order shown, with their names.
@@ -69,10 +70,38 @@ Map<String, List<Map<String, dynamic>>> reportedOf(Iterable<Map<String, dynamic>
       out['photometry']!.add({...p.cast<String, dynamic>(), ...src});
     }
     for (final l in ((c['web_links'] as List?) ?? const []).cast<Map>()) {
-      out['links']!.add({...l.cast<String, dynamic>(), ...src});
+      final link = l.cast<String, dynamic>();
+      if (linkIsGeneral(link)) continue; // the page of a telescope or of a collaboration: not about the event
+      out['links']!.add({...link, 'category': linkCategory(link, c), ...src});
     }
   }
   return out;
+}
+
+/// A link that is not about the event (as marked by the server; for an older
+/// server: not an image, and no number of five digits in its path).
+bool linkIsGeneral(Map<String, dynamic> l) {
+  if (l['general'] is bool) return l['general'] as bool;
+  final path = (l['url'] as String? ?? '').replaceFirst(RegExp(r'^https?://[^/]+'), '');
+  return l['kind'] != 'image' && !RegExp(r'\d{5}').hasMatch(path);
+}
+
+/// Where a plot or a page of the circular [c] is shown: a sky map with the
+/// sky view (`sky`), a spectrum with the spectroscopy, what a gamma-ray
+/// instrument (or the X-ray instrument that detected the burst) shows with
+/// the prompt emission, the follow-up at other wavelengths with the afterglow.
+/// Data files are listed apart, in Available data.
+String linkCategory(Map<String, dynamic> l, Map<String, dynamic> c) {
+  final bands = ((c['bands'] as List?) ?? const []).cast<String>();
+  final subject = (c['subject'] as String? ?? '').toLowerCase();
+  final words = '${l['text'] ?? ''} ${l['url'] ?? ''}'.toLowerCase();
+  if (l['about'] == 'sky map') return 'sky';
+  if (words.contains('spectr') && !bands.contains('gamma')) return 'spectroscopy';
+  if (bands.contains('gamma')) return 'prompt';
+  if (bands.length == 1 && bands.first == 'xray' && subject.contains('detection of')) return 'prompt';
+  if (bands.any((b) => b == 'optical' || b == 'xray' || b == 'radio')) return 'afterglow';
+  // a circular without label: the light curve of a burst rather than a follow-up
+  return l['about'] == 'light curve' || l['about'] == 'diagram' ? 'prompt' : 'afterglow';
 }
 
 String _mantissa(double v) {
@@ -115,7 +144,13 @@ class ReportedTab extends StatelessWidget {
     final small = Theme.of(context).textTheme.bodySmall;
     final pal = Palette.of(context);
     final rep = reportedOf(state.circulars, keys);
-    final items = rep[category]!;
+    final items = category == 'links' ? const <Map<String, dynamic>>[] : rep[category]!;
+    // the plots and pages of the circulars of this category, shown with its values
+    final own = category == 'links'
+        ? const <Map<String, dynamic>>[]
+        : rep['links']!.where((l) => l['category'] == category && l['kind'] != 'data').toList();
+    // Available data: the files only; the plots and the pages are in the tab they are about
+    final files = rep['links']!.where((l) => l['kind'] == 'data').toList();
     final phot = category == 'afterglow' ? rep['photometry']! : const <Map<String, dynamic>>[];
     final children = <Widget>[
       Padding(
@@ -125,16 +160,16 @@ class ReportedTab extends StatelessWidget {
               'Each value is given with its circular and the sentence it comes from.',
               style: small?.copyWith(color: pal.ink2))),
     ];
-    if (items.isEmpty && phot.isEmpty) {
+    if (items.isEmpty && phot.isEmpty && own.isEmpty && (category != 'links' || files.isEmpty)) {
       children.add(Padding(
           padding: const EdgeInsets.all(16),
           child: Text(state.archive.doc('circulars') == null
               ? 'Circulars not synced yet.'
               : category == 'links'
-                  ? 'No circular about these alerts gives an image or a link.'
+                  ? 'No circular about these alerts links to a data file.'
                   : 'No circular about these alerts reports this.')));
     } else if (category == 'links') {
-      children.addAll(_links(context, items));
+      children.add(_card(context, 'Data files', [for (final l in files) _LinkRow(l)]));
     } else {
       final known = {for (final k in _kinds[category]!) k.$1};
       for (final (kind, title) in [
@@ -156,11 +191,14 @@ class ReportedTab extends StatelessWidget {
             })
         ]));
       }
+      children.addAll(reportedLinks(context, own));
     }
     return ListView(padding: const EdgeInsets.only(bottom: 24), children: children);
   }
 
-  Widget _card(BuildContext context, String title, List<Widget> rows) => Card(
+}
+
+Widget _card(BuildContext context, String title, List<Widget> rows) => Card(
       margin: const EdgeInsets.fromLTRB(12, 6, 12, 6),
       child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
@@ -170,17 +208,35 @@ class ReportedTab extends StatelessWidget {
             ...rows,
           ])));
 
-  List<Widget> _links(BuildContext context, List<Map<String, dynamic>> items) {
-    final images = items.where((l) => l['kind'] == 'image').toList();
-    final others = items.where((l) => l['kind'] != 'image').toList();
-    return [
-      if (images.isNotEmpty)
-        _card(context, 'Images', [
-          Text('Loaded from the sites named in the circulars.', style: Theme.of(context).textTheme.bodySmall),
-          for (final l in images) _ImageLink(l),
-        ]),
-      if (others.isNotEmpty) _card(context, 'Pages and data', [for (final l in others) _LinkRow(l)]),
-    ];
+/// The plots (shown) and the pages (listed) of some links.
+List<Widget> reportedLinks(BuildContext context, List<Map<String, dynamic>> items, {String title = 'Plots and images'}) {
+  final images = items.where((l) => l['kind'] == 'image').toList();
+  final others = items.where((l) => l['kind'] != 'image').toList();
+  return [
+    if (images.isNotEmpty)
+      _card(context, title, [
+        Text('Loaded from the sites named in the circulars.', style: Theme.of(context).textTheme.bodySmall),
+        for (final l in images) _ImageLink(l),
+      ]),
+    if (others.isNotEmpty) _card(context, 'Pages about the event', [for (final l in others) _LinkRow(l)]),
+  ];
+}
+
+/// Under the sky view: the sky maps that the circulars about the alerts
+/// [keys] link to (localisations of the bursts, coverage of the searches).
+class SkyReported extends StatelessWidget {
+  const SkyReported(this.keys, {super.key});
+  final Set<String> keys;
+
+  @override
+  Widget build(BuildContext context) {
+    final maps = reportedOf(AppScope.of(context).circulars, keys)['links']!
+        .where((l) => l['category'] == 'sky' && l['kind'] != 'data')
+        .toList();
+    if (maps.isEmpty) return const SizedBox.shrink();
+    return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: reportedLinks(context, maps, title: 'Sky maps reported in GCN Circulars'));
   }
 }
 

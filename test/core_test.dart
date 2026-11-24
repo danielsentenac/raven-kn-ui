@@ -12,7 +12,7 @@ import 'package:raven_kn_logbook/src/archive.dart';
 import 'package:raven_kn_logbook/src/followup.dart';
 import 'package:raven_kn_logbook/src/healpix.dart';
 import 'package:raven_kn_logbook/src/state.dart';
-import 'package:raven_kn_logbook/src/ui/candidates.dart' show distanceText, filterOf;
+import 'package:raven_kn_logbook/src/ui/candidates.dart' show distanceText, filterOf, timeUnit;
 import 'package:raven_kn_logbook/src/ui/history.dart' show sinceFirst;
 import 'package:raven_kn_logbook/src/ui/logbook.dart' show exportEntries;
 import 'package:raven_kn_logbook/src/ui/plots.dart';
@@ -21,6 +21,15 @@ import 'package:raven_kn_logbook/src/ui/reported.dart';
 import 'support.dart';
 
 void main() {
+  test('the unit of a light-curve time axis follows its span', () {
+    expect(timeUnit([0, 12.5]), ('days', 1));
+    expect(timeUnit([0, 0.5, 2.9]), ('hours', 24));
+    expect(timeUnit([-0.001, 0.03]), ('minutes', 1440));
+    expect(timeUnit([0, 1.2e-4]), ('seconds', 86400)); // a magnitude 10 s before its burst
+    expect(timeUnit([0.4]), ('days', 1));
+    expect(timeUnit([]), ('days', 1));
+  });
+
   test('what a broker has at the position of a transient', () {
     expect(
         brokerFacts({
@@ -81,6 +90,28 @@ void main() {
     expect(r['photometry']!.single['mag'], 20.1);
     expect(r['links']!.single['url'], 'https://example.org/a.png');
     expect(reportedOf(circulars, {'grb:nothing'}).values.every((v) => v.isEmpty), isTrue);
+    // GCN 46283: the plot of the burst goes with the prompt emission, the page of the telescope is left out
+    final hx = reportedOf([
+      {
+        'id': 46283, 'subject': 'GRB 261113B: Insight-HXMT/HE detection', 'bands': ['gamma'],
+        'links': [{'type': 'grb', 'id': '7'}],
+        'web_links': [
+          {'url': 'https://www.bursthub.cn/gcn/2026/hxmtgrb261113B.png', 'kind': 'image', 'about': 'light curve'},
+          {'url': 'http://hxmten.ihep.ac.cn/', 'kind': 'page', 'about': null},
+          {'url': 'https://heasarc.gsfc.nasa.gov/x/glg_skymap_all_bn261111477.png', 'kind': 'image', 'about': 'sky map'},
+        ],
+      },
+      {
+        'id': 46261, 'subject': 'GRB 261113A: VLT/X-shooter spectroscopic redshift', 'bands': ['optical'],
+        'links': [{'type': 'grb', 'id': '7'}],
+        'web_links': [
+          {'url': 'https://example.org/GRB261113A/spectrum.png', 'kind': 'image', 'about': null},
+          {'url': 'https://example.org/GRB261113A/lc.png', 'kind': 'image', 'about': 'light curve', 'general': false},
+          {'url': 'https://example.org/GRB261113A/', 'kind': 'page', 'general': true},
+        ],
+      },
+    ], {'grb:7'})['links']!;
+    expect(hx.map((l) => l['category']), ['spectroscopy', 'afterglow', 'prompt', 'sky']);
   });
 
   test('a distance that is only the prior is not shown as an estimate', () {

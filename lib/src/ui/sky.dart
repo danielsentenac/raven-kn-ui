@@ -14,6 +14,7 @@ import '../followup.dart';
 import '../healpix.dart';
 import 'circulars.dart';
 import 'common.dart';
+import 'reported.dart';
 
 const _skyOrder = 7; // reduced maps: nside 128
 const _scale = 250; // byte = ceil(credible level x 250)
@@ -176,10 +177,8 @@ class _SkyViewState extends State<SkyView> {
       final want = widget.focus != null ? 'optical:${widget.focus}' : widget.startId;
       if (want != null) {
         group = groups.where((g) => g.ids.contains(want)).firstOrNull?.id;
-        if (widget.focus != null) {
-          zoom = true;
-          target = want;
-        }
+        // all sky first; "Zoom" then centres on the transient
+        if (widget.focus != null) target = want;
       }
     }
     final fixed = widget.focus != null || widget.startId != null;
@@ -611,6 +610,8 @@ class _SkyViewState extends State<SkyView> {
                 style: Theme.of(context).textTheme.bodySmall)),
       if (gw.isEmpty)
         Text(alone ? 'No GW alert is on the map: no localisation to show.' : 'This follow-up has no GW alert: no map to show.', style: Theme.of(context).textTheme.bodySmall),
+      // the sky maps that the circulars about these alerts link to
+      if (related.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 10), child: SkyReported(related.toSet())),
       // what the GCN Circulars report about the alerts on the map
       if (related.isNotEmpty)
         Padding(

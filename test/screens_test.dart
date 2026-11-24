@@ -291,6 +291,13 @@ void main() {
       expect(find.text('1.8 ± 0.3 s'), findsOneWidget);
       expect(find.text('(4.1 ± 0.5)e-7 erg/cm^2'), findsOneWidget);
       expect(find.text('15-150 keV  ·  GCN 90001'), findsOneWidget);
+      // the light curve of the burst is with the prompt emission
+      expect(find.text('Plots and images'), findsOneWidget);
+      expect(find.text('light curve  ·  GCN 90001  ·  GRB 261017A: Swift detection of a burst'), findsOneWidget);
+      expect(find.text('Pages about the event'), findsOneWidget);
+      expect(find.text('https://example.org/grb261017A/'), findsOneWidget);
+      expect(find.textContaining('skymap_1519536.png'), findsNothing); // with the sky view
+      expect(find.textContaining('healpix_1519536.fit'), findsNothing); // in Available data
     });
     await shot(t, 'reported_afterglow', FollowUpScreen(grbFollowUp), phone, act: () async {
       await t.ensureVisible(find.text('Afterglow'));
@@ -310,14 +317,23 @@ void main() {
       expect(find.text('0.42 (spectroscopic)'), findsOneWidget);
       expect(find.text('Host galaxy'), findsOneWidget);
     });
-    await shot(t, 'reported_links', FollowUpScreen(grbFollowUp), phone, act: () async {
-      await t.ensureVisible(find.text('Images and links'));
+    await shot(t, 'reported_data', FollowUpScreen(grbFollowUp), phone, act: () async {
+      await t.ensureVisible(find.text('Available data'));
       await t.pumpAndSettle();
-      await t.tap(find.text('Images and links'));
+      await t.tap(find.text('Available data'));
       await t.pumpAndSettle();
-      expect(find.text('Images'), findsOneWidget);
-      expect(find.text('light curve  ·  GCN 90001  ·  GRB 261017A: Swift detection of a burst'), findsOneWidget);
-      expect(find.text('https://example.org/grb261017A/'), findsOneWidget);
+      // the files only: plots and pages are in the tab they are about, the page of the mission nowhere
+      expect(find.text('Data files'), findsOneWidget);
+      expect(find.text('https://example.org/grb261017A/healpix_1519536.fit'), findsOneWidget);
+      expect(find.text('Plots and images'), findsNothing);
+      expect(find.textContaining('bat_lc.png'), findsNothing);
+      expect(find.textContaining('example.org/mission'), findsNothing);
+    });
+    await shot(t, 'reported_sky_maps', FollowUpScreen(grbFollowUp), const Size(412, 2600), act: () async {
+      await t.tap(find.text('Sky'));
+      await t.pumpAndSettle();
+      expect(find.text('Sky maps reported in GCN Circulars'), findsOneWidget);
+      expect(find.text('https://example.org/grb261017A/skymap_1519536.png'), findsOneWidget);
     });
     await shot(t, 'reported_nothing', FollowUpScreen(state.followups.firstWhere((f) => f['id'] == 'gw:S261021fy')), phone,
         act: () async {
