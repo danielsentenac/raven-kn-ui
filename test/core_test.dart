@@ -21,6 +21,28 @@ import 'package:raven_kn_logbook/src/ui/reported.dart';
 import 'support.dart';
 
 void main() {
+  test('what a broker has at the position of a transient', () {
+    expect(
+        brokerFacts({
+          'object': 'ZTF21abasjty', 'sep_arcsec': 0.0127, 'others': ['ZTF2'], 'n_detections': 16,
+          'first_detection': '2025-11-11T11:51:25.004Z', 'last_detection': '2025-12-21T12:51:13.999Z',
+          'classification': 'SN', 'classification_text': 'supernova',
+          'tns': {'name': 'AT 2017gfo', 'type': null, 'z': null},
+          'host': {'name': 'NGC 4993', 'catalogue': 'NED', 'z': 0.0098, 'photo_z': 0.2, 'sep_arcsec': 10.3, 'sep_kpc': 2.1, 'distance_mpc': 41.0},
+        }),
+        [
+          ('Object', 'ZTF21abasjty, 0.0127 arcsec from the position'),
+          ('Others in the radius', 'ZTF2'),
+          ('Detections', '16, first 2025-11-11 11:51 UTC, last 2025-12-21 12:51 UTC'),
+          ('Classification', 'SN (supernova)'),
+          ('TNS', 'AT 2017gfo'),
+          ('Proposed host', 'NGC 4993 (NED), z = 0.0098, 10.3 arcsec away, 2.1 kpc, 41 Mpc'),
+        ]);
+    expect(brokerFacts({'status': 'none', 'host': {'name': 'G1', 'photo_z': 0.157, 'photo_z_err': 0.136}}),
+        [('Proposed host', 'G1, photometric z = 0.157 ± 0.136')]);
+    expect(brokerFacts({'status': 'error', 'note': 'x'}), isEmpty);
+  });
+
   test('values reported in circulars are shown as written', () {
     expect(factValue({'value': 7.447, 'err_minus': 0.084, 'err_plus': 0.121, 'unit': 's'}), '7.447 (-0.084 +0.121) s');
     expect(factValue({'value': 2.05e-5, 'err_minus': 2.0e-6, 'err_plus': 1.5e-6, 'unit': 'erg/cm^2'}), '(2.05 (-0.2 +0.15))e-5 erg/cm^2');

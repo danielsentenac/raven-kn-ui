@@ -197,7 +197,7 @@ class CandidateScreen extends StatelessWidget {
     // the circulars about the transient and about the alerts it is followed with (its burst)
     final keys = {'optical:$name', for (final m in ((fu?['members'] as List?) ?? const []).cast<Map>()) m['key'] as String};
     return DefaultTabController(
-      length: 5 + reportedCategories.length,
+      length: 6 + reportedCategories.length,
       child: Scaffold(
         appBar: AppBar(
           title: Text(followUp?['title'] as String? ?? 'Optical $name'),
@@ -208,6 +208,7 @@ class CandidateScreen extends StatelessWidget {
             const Tab(text: 'GW search'),
             const Tab(text: 'Sky'),
             for (final c in reportedCategories) Tab(text: reportedTitle(c)),
+            const Tab(text: 'Brokers'),
           ]),
         ),
         body: TabBarView(children: [
@@ -217,6 +218,7 @@ class CandidateScreen extends StatelessWidget {
           _Runs(name, runs, (doc['hidden_runs'] as int?) ?? 0, ((doc['launches'] as List?) ?? const []).cast<Map<String, dynamic>>()),
           SkyView(focus: name),
           for (final c in reportedCategories) ReportedTab(keys, c),
+          BrokersTab((doc['brokers'] as Map?)?.cast<String, dynamic>()),
         ]),
       ),
     );

@@ -294,3 +294,112 @@ class _ImageLink extends StatelessWidget {
         ]));
   }
 }
+
+/// What the alert brokers have at the position of an optical transient
+/// ([rec] is the `brokers` record of the server, null when not asked yet).
+class BrokersTab extends StatelessWidget {
+  const BrokersTab(this.rec, {super.key});
+  final Map<String, dynamic>? rec;
+
+  @override
+  Widget build(BuildContext context) {
+    final small = Theme.of(context).textTheme.bodySmall;
+    final pal = Palette.of(context);
+    final brokers = ((rec?['brokers'] as List?) ?? const []).cast<Map<String, dynamic>>();
+    return ListView(padding: const EdgeInsets.only(bottom: 24), children: [
+      Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Text(
+              rec == null
+                  ? 'The brokers have not been asked about this transient yet.'
+                  : 'The object nearest to the position in each alert broker, within ${fmtNum(rec!['radius_arcsec'] as num?)} arcsec, '
+                      'asked ${fmtTime(DateTime.tryParse(rec!['time'] as String? ?? ''), seconds: false)} UTC. '
+                      'Classifications and hosts are those of the brokers, from their classifiers and catalogue matches: '
+                      'they are not applied to the transient and do not enter the decision.',
+              style: small?.copyWith(color: pal.ink2))),
+      for (final b in brokers) _BrokerCard(b),
+    ]);
+  }
+}
+
+/// One line of facts of a broker record, in the order shown.
+List<(String, String)> brokerFacts(Map<String, dynamic> b) {
+  final host = (b['host'] as Map?)?.cast<String, dynamic>();
+  final tns = (b['tns'] as Map?)?.cast<String, dynamic>();
+  String day(String k) => fmtTime(DateTime.tryParse(b[k] as String), seconds: false);
+  return [
+    if (b['object'] != null)
+      ('Object', '${b['object']}${b['sep_arcsec'] != null ? ', ${fmtNum(b['sep_arcsec'] as num)} arcsec from the position' : ''}'),
+    if (((b['others'] as List?) ?? const []).isNotEmpty) ('Others in the radius', (b['others'] as List).join(', ')),
+    if (b['n_detections'] != null)
+      (
+        'Detections',
+        '${b['n_detections']}'
+            '${b['first_detection'] != null ? ', first ${day('first_detection')} UTC' : ''}'
+            '${b['last_detection'] != null ? ', last ${day('last_detection')} UTC' : ''}'
+      ),
+    if (b['peak'] != null) ('Brightest', b['peak'] as String),
+    if (b['classification'] != null)
+      ('Classification', '${b['classification']}${b['classification_text'] != null ? ' (${b['classification_text']})' : ''}'),
+    if (tns != null) ('TNS', '${tns['name']}${tns['type'] != null ? ', ${tns['type']}' : ''}${tns['z'] != null ? ', z = ${tns['z']}' : ''}'),
+    if (host != null)
+      (
+        'Proposed host',
+        [
+          '${host['name']}${host['catalogue'] != null ? ' (${host['catalogue']})' : ''}',
+          if (host['z'] != null) 'z = ${fmtNum(host['z'] as num, sig: 4)}',
+          if (host['z'] == null && host['photo_z'] != null)
+            'photometric z = ${fmtNum(host['photo_z'] as num)}${host['photo_z_err'] != null ? ' ± ${fmtNum(host['photo_z_err'] as num)}' : ''}',
+          if (host['sep_arcsec'] != null) '${fmtNum(host['sep_arcsec'] as num)} arcsec away',
+          if (host['sep_kpc'] != null) '${fmtNum(host['sep_kpc'] as num)} kpc',
+          if (host['distance_mpc'] != null) '${fmtNum(host['distance_mpc'] as num)} Mpc',
+        ].join(', ')
+      ),
+  ];
+}
+
+class _BrokerCard extends StatelessWidget {
+  const _BrokerCard(this.b);
+  final Map<String, dynamic> b;
+
+  @override
+  Widget build(BuildContext context) {
+    final small = Theme.of(context).textTheme.bodySmall;
+    final pal = Palette.of(context);
+    final status = switch (b['status']) {
+      'match' => 'object found',
+      'none' => 'no object at this position',
+      'not_configured' => 'not configured',
+      _ => 'no answer',
+    };
+    final url = b['url'] as String?;
+    return Card(
+        margin: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+        child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Expanded(child: Text(b['label'] as String? ?? b['broker'] as String, style: Theme.of(context).textTheme.titleSmall)),
+                Text(status, style: small?.copyWith(fontWeight: FontWeight.w600, color: b['status'] == 'match' ? pal.ink : pal.ink2)),
+              ]),
+              if (b['stale_since'] != null)
+                Text('No answer at the last request: this is its answer of ${fmtTime(DateTime.tryParse(b['stale_since'] as String), seconds: false)} UTC.',
+                    style: small?.copyWith(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 4),
+              for (final (k, v) in brokerFacts(b))
+                Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      SizedBox(width: 130, child: Text(k, style: small?.copyWith(color: pal.ink2))),
+                      Expanded(child: Text(v)),
+                    ])),
+              if ((b['description'] as String? ?? '').isNotEmpty) Text(b['description'] as String, style: small),
+              if ((b['note'] as String? ?? '').isNotEmpty) Text(b['note'] as String, style: small?.copyWith(color: pal.ink2)),
+              if (url != null)
+                Row(children: [
+                  Expanded(child: SelectableText(url, style: small)),
+                  IconButton(tooltip: 'Copy the address', icon: const Icon(Icons.copy, size: 18), onPressed: () => _copy(context, url)),
+                ]),
+            ])));
+  }
+}

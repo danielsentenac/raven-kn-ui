@@ -12,6 +12,7 @@ import 'package:raven_kn_logbook/src/archive.dart';
 import 'package:raven_kn_logbook/src/state.dart';
 import 'package:raven_kn_logbook/src/ui/candidates.dart';
 import 'package:raven_kn_logbook/src/ui/circulars.dart';
+import 'package:raven_kn_logbook/src/ui/reported.dart';
 import 'package:raven_kn_logbook/src/ui/common.dart';
 import 'package:raven_kn_logbook/src/ui/logbook.dart';
 import 'package:raven_kn_logbook/src/ui/system.dart';
@@ -251,6 +252,33 @@ void main() {
         act: () async {
       expect(find.text('Distance'), findsOneWidget);
       expect(find.textContaining('too far for a GW search'), findsOneWidget);
+    });
+    await shot(t, 'brokers_not_asked', const CandidateScreen('SSS17a'), const Size(1300, 900), act: () async {
+      await t.tap(find.text('Brokers'));
+      await t.pumpAndSettle();
+      expect(find.text('The brokers have not been asked about this transient yet.'), findsOneWidget);
+    });
+    await shot(
+        t,
+        'brokers',
+        const Scaffold(
+            body: BrokersTab({
+          'time': '2026-11-24T10:00:00.000Z', 'radius_arcsec': 3.0,
+          'brokers': [
+            {'broker': 'lasair', 'label': 'Lasair (ZTF)', 'status': 'match', 'object': 'ZTF21abasjty', 'sep_arcsec': 0.0127,
+             'n_detections': 16, 'classification': 'AGN', 'classification_text': 'active galactic nucleus',
+             'host': {'name': 'SDSSJ125804.05+475850.8', 'catalogue': 'MILLIQUAS/PS1', 'sep_arcsec': 0.322},
+             'url': 'https://lasair-ztf.lsst.ac.uk/objects/ZTF21abasjty/'},
+            {'broker': 'fink_lsst', 'label': 'Fink (Rubin)', 'status': 'none'},
+            {'broker': 'antares', 'label': 'ANTARES', 'status': 'error', 'note': 'HTTPError: 500 Server Error'},
+          ]
+        })),
+        phone, act: () async {
+      expect(find.text('object found'), findsOneWidget);
+      expect(find.text('ZTF21abasjty, 0.0127 arcsec from the position'), findsOneWidget);
+      expect(find.text('AGN (active galactic nucleus)'), findsOneWidget);
+      expect(find.text('no object at this position'), findsOneWidget);
+      expect(find.text('no answer'), findsOneWidget);
     });
     // what the circulars report, by category, in the tabs of a follow-up
     final grbFollowUp = state.followups.firstWhere((f) => f['id'] == 'grb:1519536');
