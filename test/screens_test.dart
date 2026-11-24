@@ -1,5 +1,6 @@
 // Renders every screen from the fixture and writes PNG files to build/screenshots/,
 // to look at the layout (phone and desktop sizes, light and dark).
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -346,6 +347,34 @@ void main() {
     await shot(t, 'followup_gw_only', FollowUpScreen(state.followups.firstWhere((f) => f['id'] == 'gw:S261021fy')), phone);
     await shot(t, 'system_phone', const Shell(), const Size(412, 1500), act: () => t.tap(find.text('System').last));
     await shot(t, 'settings', const SettingsScreen(), phone);
+  });
+
+  testWidgets('a transient ready for a search is announced until it is opened', (t) async {
+    final s3 = AppState(Archive.memory(), clientFactory: () => fixtureServer());
+    s3.saveSettings(serverUrl: 'http://server:8765', token: 'lvktok', portalUrl: 'https://portal.example/login');
+    await t.runAsync(s3.sync);
+    expect(s3.readyUnseen, isEmpty); // both transients of the fixture already have a search
+    final doc = jsonDecode(jsonEncode(s3.archive.doc('followups'))) as Map<String, dynamic>;
+    ((doc['followups'] as List).firstWhere((f) => f['optical'] == 'FIX-KN-1') as Map)['ready'] = true;
+    s3.archive.putDoc('followups', doc);
+    expect(s3.readyUnseen.map((f) => f['optical']), ['FIX-KN-1']);
+    await shot(t, 'ready_banner', const Shell(), phone, st: s3, act: () async {
+      expect(find.textContaining('FIX-KN-1 is ready for a targeted search'), findsOneWidget);
+      expect(find.textContaining('No search is started automatically'), findsOneWidget);
+      await t.tap(find.text('Candidates').last);
+      await t.pumpAndSettle();
+      // first in the list, with its mark
+      expect(find.textContaining('Ready for a targeted search: confirmed as a kilonova'), findsOneWidget);
+    });
+    await shot(t, 'ready_opened', const Shell(), phone, st: s3, act: () async {
+      await t.tap(find.text('Open'));
+      await t.pumpAndSettle();
+      expect(find.text('Follow-up'), findsOneWidget); // the page of the transient
+      expect(s3.readyUnseen, isEmpty);
+      await t.pageBack();
+      await t.pumpAndSettle();
+      expect(find.textContaining('is ready for a targeted search'), findsNothing); // opened: the banner is gone
+    });
   });
 
   testWidgets('portal closed banner', (t) async {

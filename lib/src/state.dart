@@ -124,6 +124,23 @@ class AppState extends ChangeNotifier {
       ((archive.doc('optical')?['optical'] as List?) ?? const []).cast<Map<String, dynamic>>();
 
   /// Alerts grouped by the links the pipeline made; a group may be a candidate.
+  /// Follow-ups whose optical transient is ready for a targeted search (confirmed as a
+  /// kilonova, within reach) with no search asked for yet, and that nobody has opened in
+  /// this application since. Nothing starts a search but a person.
+  List<Map<String, dynamic>> get readyUnseen =>
+      followups.where((f) => f['ready'] == true && !readySeen.contains(f['optical'])).toList();
+
+  Set<String> get readySeen => (archive.meta('ready_seen') ?? '').split('\n').where((s) => s.isNotEmpty).toSet();
+
+  /// The transient was opened: its announcement leaves the banner.
+  void markReadySeen(String optical) {
+    final seen = readySeen;
+    if (seen.add(optical)) {
+      archive.setMeta('ready_seen', seen.join('\n'));
+      notifyListeners();
+    }
+  }
+
   List<Map<String, dynamic>> get followups =>
       ((archive.doc('followups')?['followups'] as List?) ?? const []).cast<Map<String, dynamic>>();
 

@@ -33,7 +33,11 @@ class _CandidatesScreenState extends State<CandidatesScreen> {
               padding: const EdgeInsets.all(24),
               child: Text(state.lastSync == null ? 'Nothing synced yet.' : 'No alert in the store yet.')));
     }
-    final list = every.where((f) => all || f['candidate'] == true).toList();
+    // those ready for a targeted search first, then newest first as the server gives them
+    final list = [
+      ...every.where((f) => f['ready'] == true),
+      ...every.where((f) => f['ready'] != true && (all || f['candidate'] == true)),
+    ];
     final nCand = every.where((f) => f['candidate'] == true).length;
     return ListView(children: [
       Padding(
@@ -61,7 +65,6 @@ class _FollowUpTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = AppScope.of(context);
     final pal = Palette.of(context);
     final members = ((f['members'] as List?) ?? const []).cast<Map<String, dynamic>>();
     final reasons = ((f['reasons'] as List?) ?? const []).cast<String>();
@@ -72,14 +75,7 @@ class _FollowUpTile extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: InkWell(
-        onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute<void>(
-                builder: (_) => AppScope(
-                    state: state,
-                    child: f['optical'] != null && state.archive.doc('optical/${f['optical']}') != null
-                        ? CandidateScreen(f['optical'] as String, followUp: f)
-                        : FollowUpScreen(f)))),
+        onTap: () => openFollowUp(context, f),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -89,6 +85,16 @@ class _FollowUpTile extends StatelessWidget {
                       style: Theme.of(context).textTheme.titleSmall)),
               if (att != null) StatusChip(att),
             ]),
+            if (f['ready'] == true)
+              Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Row(children: [
+                    Icon(Icons.campaign, size: 18, color: Theme.of(context).colorScheme.primary),
+                    const SizedBox(width: 6),
+                    Expanded(
+                        child: Text('Ready for a targeted search: confirmed as a kilonova and within reach. No search started yet.',
+                            style: small?.copyWith(fontWeight: FontWeight.w700, color: Theme.of(context).colorScheme.primary))),
+                  ])),
             const SizedBox(height: 4),
             Text(
                 '${isCand ? 'Candidate' : 'Not a candidate'}  ·  started from ${typeLabel(f['origin'] as String)} ${f['origin_name']}'
@@ -109,6 +115,55 @@ class _FollowUpTile extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Opens the page of a follow-up; one that was announced as ready leaves the banner.
+void openFollowUp(BuildContext context, Map<String, dynamic> f) {
+  final state = AppScope.of(context);
+  final optical = f['optical'] as String?;
+  if (optical != null && f['ready'] == true) state.markReadySeen(optical);
+  Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+          builder: (_) => AppScope(
+              state: state,
+              child: optical != null && state.archive.doc('optical/$optical') != null
+                  ? CandidateScreen(optical, followUp: f)
+                  : FollowUpScreen(f))));
+}
+
+/// On every main screen: the optical transients that became ready for a targeted
+/// search and that nobody has opened yet. The pipeline starts no search by itself.
+class ReadyBanner extends StatelessWidget {
+  const ReadyBanner({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final ready = state.readyUnseen;
+    if (ready.isEmpty) return const SizedBox.shrink();
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+        color: scheme.primaryContainer,
+        child: Column(children: [
+          for (final f in ready)
+            InkWell(
+                onTap: () => openFollowUp(context, f),
+                child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Row(children: [
+                      Icon(Icons.campaign, color: scheme.onPrimaryContainer),
+                      const SizedBox(width: 10),
+                      Expanded(
+                          child: Text(
+                              '${f['optical']} is ready for a targeted search: confirmed as a kilonova and within reach. '
+                              'No search is started automatically.',
+                              style: TextStyle(fontWeight: FontWeight.w600, color: scheme.onPrimaryContainer))),
+                      Text('Open', style: TextStyle(fontWeight: FontWeight.w700, color: scheme.onPrimaryContainer)),
+                      Icon(Icons.chevron_right, color: scheme.onPrimaryContainer),
+                    ]))),
+        ]));
   }
 }
 
@@ -318,7 +373,8 @@ class _FollowUp extends StatelessWidget {
       ]),
       if (d != null)
         _section(context, 'Decision', [
-          _fact(context, 'Targeted search', d['trigger_targeted_search'] == true ? 'triggered' : 'held'),
+          _fact(context, 'Targeted search',
+              d['trigger_targeted_search'] == true ? 'ready: confirmed as a kilonova and within reach (a person starts it)' : 'held'),
           if (win != null)
             _fact(context, 'Merger-time window',
                 '${fmtNum((win['duration_h'] as num) * 3600)} s, from ${win['method']} (GPS ${fmtNum(win['gps_start'] as num?, sig: 12)})'),
@@ -594,7 +650,8 @@ class _RunsState extends State<_Runs> {
           Text(
               busy
                   ? 'A search of this optical transient is already waiting or running.'
-                  : 'Run on the Virgo site by the launcher, from the frames kept there. The search decision does not have to be "triggered".',
+                  : 'Run on the Virgo site by the launcher, from the frames kept there. Nothing starts a search but this button; '
+                      'the search decision does not have to be "ready".',
               style: small),
           if (message != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(message!, style: const TextStyle(fontWeight: FontWeight.w600))),
         ],

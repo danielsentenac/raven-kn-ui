@@ -76,7 +76,7 @@ class _ShellState extends State<Shell> {
     final problems = ((state.health?['listeners'] as List?) ?? const []).any((l) => (l as Map)['alive'] != true);
     return LayoutBuilder(builder: (context, box) {
       final wide = box.maxWidth >= 760;
-      final content = Column(children: [const ConnectionBanner(), Expanded(child: body)]);
+      final content = Column(children: [const ConnectionBanner(), const ReadyBanner(), Expanded(child: body)]);
       return Scaffold(
         appBar: AppBar(
           title: Text(_titles[tab]),
