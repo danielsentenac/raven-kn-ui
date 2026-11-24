@@ -252,6 +252,53 @@ void main() {
       expect(find.text('Distance'), findsOneWidget);
       expect(find.textContaining('too far for a GW search'), findsOneWidget);
     });
+    // what the circulars report, by category, in the tabs of a follow-up
+    final grbFollowUp = state.followups.firstWhere((f) => f['id'] == 'grb:1519536');
+    await shot(t, 'reported_prompt', FollowUpScreen(grbFollowUp), phone, act: () async {
+      await t.ensureVisible(find.text('Prompt emission'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Prompt emission'));
+      await t.pumpAndSettle();
+      expect(find.text('Duration T90'), findsOneWidget);
+      expect(find.text('1.8 ± 0.3 s'), findsOneWidget);
+      expect(find.text('(4.1 ± 0.5)e-7 erg/cm^2'), findsOneWidget);
+      expect(find.text('15-150 keV  ·  GCN 90001'), findsOneWidget);
+    });
+    await shot(t, 'reported_afterglow', FollowUpScreen(grbFollowUp), phone, act: () async {
+      await t.ensureVisible(find.text('Afterglow'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Afterglow'));
+      await t.pumpAndSettle();
+      expect(find.text('X-ray flux'), findsOneWidget);
+      expect(find.text('(2.4 ± 0.4)e-11 erg/cm^2/s'), findsOneWidget);
+      expect(find.text('Optical and infrared magnitudes'), findsOneWidget);
+      expect(find.text('r = 24.3 ± 0.2'), findsOneWidget);
+    });
+    await shot(t, 'reported_spectroscopy', FollowUpScreen(grbFollowUp), phone, act: () async {
+      await t.ensureVisible(find.text('Spectroscopy'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Spectroscopy'));
+      await t.pumpAndSettle();
+      expect(find.text('0.42 (spectroscopic)'), findsOneWidget);
+      expect(find.text('Host galaxy'), findsOneWidget);
+    });
+    await shot(t, 'reported_links', FollowUpScreen(grbFollowUp), phone, act: () async {
+      await t.ensureVisible(find.text('Images and links'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Images and links'));
+      await t.pumpAndSettle();
+      expect(find.text('Images'), findsOneWidget);
+      expect(find.text('light curve  ·  GCN 90001  ·  GRB 261017A: Swift detection of a burst'), findsOneWidget);
+      expect(find.text('https://example.org/grb261017A/'), findsOneWidget);
+    });
+    await shot(t, 'reported_nothing', FollowUpScreen(state.followups.firstWhere((f) => f['id'] == 'gw:S261021fy')), phone,
+        act: () async {
+      await t.ensureVisible(find.text('Prompt emission'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Prompt emission'));
+      await t.pumpAndSettle();
+      expect(find.text('No circular about these alerts reports this.'), findsOneWidget);
+    });
     await shot(t, 'followup_gw_only', FollowUpScreen(state.followups.firstWhere((f) => f['id'] == 'gw:S261021fy')), phone);
     await shot(t, 'system_phone', const Shell(), const Size(412, 1500), act: () => t.tap(find.text('System').last));
     await shot(t, 'settings', const SettingsScreen(), phone);

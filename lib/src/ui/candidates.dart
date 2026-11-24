@@ -10,6 +10,7 @@ import 'common.dart';
 import 'history.dart';
 import 'logbook.dart';
 import 'plots.dart';
+import 'reported.dart';
 import 'sky.dart';
 
 /// The follow-ups the pipeline labels as candidates (or all follow-ups).
@@ -120,8 +121,9 @@ class FollowUpScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final members = ((f['members'] as List?) ?? const []).cast<Map<String, dynamic>>();
     final gw = members.where((m) => m['type'] == 'gw').firstOrNull;
+    final keys = {for (final m in members) m['key'] as String};
     return DefaultTabController(
-      length: gw != null ? 3 : 2,
+      length: (gw != null ? 3 : 2) + reportedCategories.length,
       child: Scaffold(
         appBar: AppBar(
           title: Text(f['title'] as String? ?? '${typeLabel((f['id'] as String).split(':').first)} ${f['name']}'),
@@ -129,12 +131,14 @@ class FollowUpScreen extends StatelessWidget {
             const Tab(text: 'Follow-up'),
             if (gw != null) const Tab(text: 'Log'),
             const Tab(text: 'Sky'),
+            for (final c in reportedCategories) Tab(text: reportedTitle(c)),
           ]),
         ),
         body: TabBarView(children: [
           ListView(padding: const EdgeInsets.only(bottom: 24), children: [FollowUpSummary(f)]),
           if (gw != null) LogList(query: LogQuery(superevent: gw['id'] as String)),
           SkyView(startId: f['id'] as String),
+          for (final c in reportedCategories) ReportedTab(keys, c),
         ]),
       ),
     );
@@ -189,25 +193,30 @@ class CandidateScreen extends StatelessWidget {
       return Scaffold(appBar: AppBar(title: Text(name)), body: const Center(child: Text('Not synced yet.')));
     }
     final runs = ((doc['runs'] as List?) ?? const []).cast<Map<String, dynamic>>();
+    final fu = followUp ?? state.followups.where((f) => f['optical'] == name).firstOrNull;
+    // the circulars about the transient and about the alerts it is followed with (its burst)
+    final keys = {'optical:$name', for (final m in ((fu?['members'] as List?) ?? const []).cast<Map>()) m['key'] as String};
     return DefaultTabController(
-      length: 5,
+      length: 5 + reportedCategories.length,
       child: Scaffold(
         appBar: AppBar(
           title: Text(followUp?['title'] as String? ?? 'Optical $name'),
-          bottom: const TabBar(isScrollable: true, tabAlignment: TabAlignment.start, tabs: [
-            Tab(text: 'Follow-up'),
-            Tab(text: 'Log'),
-            Tab(text: 'Light curve'),
-            Tab(text: 'GW search'),
-            Tab(text: 'Sky'),
+          bottom: TabBar(isScrollable: true, tabAlignment: TabAlignment.start, tabs: [
+            const Tab(text: 'Follow-up'),
+            const Tab(text: 'Log'),
+            const Tab(text: 'Light curve'),
+            const Tab(text: 'GW search'),
+            const Tab(text: 'Sky'),
+            for (final c in reportedCategories) Tab(text: reportedTitle(c)),
           ]),
         ),
         body: TabBarView(children: [
-          _FollowUp(doc, fetched, followUp ?? state.followups.where((f) => f['optical'] == name).firstOrNull),
+          _FollowUp(doc, fetched, fu),
           LogList(query: LogQuery(optical: name)),
           _LightCurve(doc),
           _Runs(name, runs, (doc['hidden_runs'] as int?) ?? 0, ((doc['launches'] as List?) ?? const []).cast<Map<String, dynamic>>()),
           SkyView(focus: name),
+          for (final c in reportedCategories) ReportedTab(keys, c),
         ]),
       ),
     );

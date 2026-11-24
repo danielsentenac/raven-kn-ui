@@ -16,10 +16,51 @@ import 'package:raven_kn_logbook/src/ui/candidates.dart' show distanceText, filt
 import 'package:raven_kn_logbook/src/ui/history.dart' show sinceFirst;
 import 'package:raven_kn_logbook/src/ui/logbook.dart' show exportEntries;
 import 'package:raven_kn_logbook/src/ui/plots.dart';
+import 'package:raven_kn_logbook/src/ui/reported.dart';
 
 import 'support.dart';
 
 void main() {
+  test('values reported in circulars are shown as written', () {
+    expect(factValue({'value': 7.447, 'err_minus': 0.084, 'err_plus': 0.121, 'unit': 's'}), '7.447 (-0.084 +0.121) s');
+    expect(factValue({'value': 2.05e-5, 'err_minus': 2.0e-6, 'err_plus': 1.5e-6, 'unit': 'erg/cm^2'}), '(2.05 (-0.2 +0.15))e-5 erg/cm^2');
+    expect(factValue({'value': 9.49e52, 'err_minus': 1.65e52, 'err_plus': 1.65e52, 'unit': 'erg'}), '(9.49 ± 1.65)e52 erg');
+    expect(factValue({'value': 0.2, 'unit': 'mJy', 'approx': true}), 'about 0.2 mJy');
+    expect(factValue({'value': -3.1, 'unit': '', 'limit': true}), 'limit -3.1');
+    expect(factValue({'value': null, 'what': 'likely long'}), 'likely long');
+    expect(factValue({'kind': 'redshift', 'value': 3.58, 'what': 'spectroscopic'}), '3.58 (spectroscopic)');
+  });
+
+  test('what the circulars report about the alerts of a follow-up', () {
+    final circulars = [
+      {
+        'id': 2, 'subject': 'B', 'redshift': 0.4, 'redshift_kind': 'spectroscopic',
+        'links': [{'type': 'grb', 'id': '7'}],
+        'facts': [{'category': 'afterglow', 'kind': 'decay_index', 'value': -0.8}],
+        'photometry': [{'band': 'r', 'mag': 20.1}],
+      },
+      {
+        'id': 1, 'subject': 'A',
+        'links': [{'type': 'grb', 'id': '7'}],
+        'facts': [{'category': 'prompt', 'kind': 't90', 'value': 2.0}],
+        'web_links': [{'url': 'https://example.org/a.png', 'kind': 'image'}],
+      },
+      {
+        'id': 3, 'subject': 'other burst',
+        'links': [{'type': 'grb', 'id': '8'}],
+        'facts': [{'category': 'prompt', 'kind': 't90', 'value': 99.0}],
+      },
+      {'id': 4, 'subject': 'older server: no facts', 'links': [{'type': 'grb', 'id': '7'}]},
+    ];
+    final r = reportedOf(circulars, {'grb:7', 'optical:X'});
+    expect(r['prompt']!.map((f) => (f['value'], f['circular'], f['subject'])), [(2.0, 1, 'A')]);
+    expect(r['afterglow']!.single['circular'], 2);
+    expect(r['spectroscopy']!.single['kind'], 'redshift');
+    expect(r['photometry']!.single['mag'], 20.1);
+    expect(r['links']!.single['url'], 'https://example.org/a.png');
+    expect(reportedOf(circulars, {'grb:nothing'}).values.every((v) => v.isEmpty), isTrue);
+  });
+
   test('a distance that is only the prior is not shown as an estimate', () {
     String range(Map? m, String unit) => '${m?['median']} $unit';
     final prior = {
